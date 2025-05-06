@@ -51,6 +51,9 @@ def get_xpk_setup_cmd(tmpdir, branch: str = MAIN_BRANCH):
   cmds = [
       "set -xue",
       clone_branch,
+      f"cd {tmpdir}/xpk/src/xpk",
+      "sed -i '/validate_dependencies()/s/^/#/' main.py",
+      "cat main.py",
       "pip install ruamel.yaml docker",
   ]
   return cmds
@@ -74,6 +77,49 @@ def generate_workload_id(benchmark_id: str) -> str:
   return f"{short_benchmark}{short_id}"
 
 
+# TODO Severus can work here if he wants or delete it.
+# @task.sensor(poke_interval=20, timeout=600, mode="reschedule")
+# def check_loacal_ramdisk(
+#     task_id: str,
+#     project_id: str,
+#     region: str,
+#     cluster_name: str,
+#     workload_id: str,
+#     ramdisk_dir: str,
+#   ) -> bool:
+#   """Check locally in the working pod while executing the ramdisk to see if follow HASH format"""
+#   core_api = _get_core_api_client(project_id, region, cluster_name)
+#   pods = _list_workload_pods(core_api, workload_id)
+
+#   if any(pod.status.phase in ["Pending"] for pod in pods.items):
+#     logging.info("Some of the pods is still pending. Waiting to start")
+#     return False
+
+#   validate_pod = []
+#   cmd = (
+#     f"bash ls /{ramdisk_dir}"
+#   )
+#   try:
+#     for pod in pods.items:
+#       if pod.status.phase == "Failed":
+#         # Don't keep retrying if the pod has failed
+#         raise AirflowFailException(f"Bad pod phase: {pod.status.phase}")
+#       elif pod.status.phase in ["Unknown"]:
+#         raise RuntimeError(f"Bad pod phase: {pod.status.phase}")
+#   finally:
+#       try:
+#         if pod.status.phase == "Running":
+#           ramdisk_stdout = core_api.connect_get_namespaced_pod_exec(
+#             name=pod.metadata.name, namespace=pod.metadata.namespace,
+#             command=cmd, stderr=True, stdin=False, stdout=True,
+#           )
+#           logging.info("After executing {cmd}: {ramdisk_stdout}")
+#           return True
+#       except k8s_client.rest.ApiException as e:
+#         logging.error(f"Error executing command in pod {pod.metadata.name} in namespace {pod.metadata.namespace}: {e}")
+#         raise
+
+
 @task
 def run_workload(
     task_id: str,
@@ -90,7 +136,7 @@ def run_workload(
     use_vertex_tensorboard: bool = False,
     use_pathways: bool = False,
     ramdisk_directory: str = "",  # Directory for enabling emergency checkpointing
-    mtc_enabled: bool = False,  # It enables MTC phase-2 drivers
+    mtc_enabled: bool = False,
     xpk_branch: str = MAIN_BRANCH,
 ):
   """Run workload through xpk tool."""
@@ -114,12 +160,11 @@ def run_workload(
         f" --{multi_keyword}={num_slices} --docker-image={docker_image}"
         f" --project={cluster_project} --zone={zone}"
         f" --env {metric_config.SshEnvVars.GCS_OUTPUT.name}={gcs_path}"
-        " --restart-on-user-code-failure"
     )
     if ramdisk_directory:
       workload_create_cmd += f" --ramdisk-directory={ramdisk_directory}"
     if mtc_enabled:
-      workload_create_cmd += " --mtc-enabled"
+       workload_create_cmd += " --mtc-enabled"
 
     # If using a valid GPU and the XPK branch is set to "main", then branch is switch to "v0.4.1".
     if is_valid_gpu_version(accelerator_type) and xpk_branch == MAIN_BRANCH:
@@ -143,6 +188,7 @@ def run_workload(
     assert (
         result.exit_code == 0
     ), f"XPK command failed with code {result.exit_code}"
+
 
 
 def _get_core_api_client(
@@ -205,6 +251,56 @@ def _get_workload_job(
   return jobs.items[0]
 
 
+@task.sensor(poke_interval=20, timeout=600, mode="reschedule")
+def run_interruption_cmd(
+    task_id: str,
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+)-> bool:
+  """Run command to interrupt pod ."""
+
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods = _list_workload_pods(core_api, workload_id)
+
+  if any(pod.status.phase in ["Pending"] for pod in pods.items):
+    logging.info("Some of the pods is still pending. Waiting to start")
+    return False
+
+  try:
+    for pod in pods.items:
+      if pod.status.phase == "Failed":
+        # Don't keep retrying if the pod has failed
+        raise AirflowFailException(f"Bad pod phase: {pod.status.phase}")
+      elif pod.status.phase in ["Unknown"]:
+        raise RuntimeError(f"Bad pod phase: {pod.status.phase}")
+  finally:
+    if all(pod.status.phase in ["Running"]for pod in pods.items):
+      # Print the logs of the last pod checked - either the first failed pod or
+      # the last successful one.
+
+      #Pick last one running pod
+      pod = pods.items[len(pods.items) -1 ]
+      logs = core_api.read_namespaced_pod_log(
+          name=pod.metadata.name, namespace=pod.metadata.namespace
+      )
+      logging.info(f"Logs for pod {pod.metadata.name}:")
+      for line in logs.split("\n"):
+        logging.info(line)
+
+      #TODO --> More sophisticated way to know pod start training.
+      if "completed step:" in logs:
+        # Here where regex expresion to kill pod will go. First test with killing the  pod
+        result = core_api.delete_namespaced_pod(
+            name=pod.metadata.name, namespace=pod.metadata.namespace
+        )
+        logging.info(f"Logs for deleted pod {pod.metadata.name}: {result}")
+        logging.info("One pod was sucessfully deleted.")
+        return True
+  return False
+
+
 @task.sensor(poke_interval=60, timeout=600, mode="reschedule")
 def wait_for_workload_start(
     workload_id: str, project_id: str, region: str, cluster_name: str
@@ -214,6 +310,34 @@ def wait_for_workload_start(
   pods = _list_workload_pods(core_api, workload_id)
   print(f"Found {len(pods.items)} pods for workload {workload_id}")
   return len(pods.items) > 0
+
+
+@task.sensor(poke_interval=60, timeout=600, mode="reschedule")
+def wait_for_workload_to_terminate(
+    workload_id: str, project_id: str, region: str, cluster_name: str
+) -> bool:
+  """Check the workload status."""
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods = _list_workload_pods(core_api, workload_id)
+
+  if any(pod.status.phase in ["Pending", "Running", "Terminating"] for pod in pods.items):
+    logging.info("There are still running ,pending or is in process of terminating")
+    return False
+
+  try:
+    for pod in pods.items:
+      if pod.status.phase == "Failed":
+        # Don't keep retrying if the pod has failed
+        raise AirflowFailException(f"Bad pod phase: {pod.status.phase}")
+      elif pod.status.phase in ["Unknown"]:
+        raise RuntimeError(f"Bad pod phase: {pod.status.phase}")
+  finally:
+    # If there is no pods it means that they already fail and jobset cleanup
+    if len(pods.items) == 0:
+      logging.info(f"No pods found for workload selector: {workload_id}. Can continue with next workload")
+      return True
+  logging.info("All pod(s) were failed and deleted.")
+  return False
 
 
 @task.sensor(poke_interval=60, timeout=600, mode="reschedule")

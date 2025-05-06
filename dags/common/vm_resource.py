@@ -69,7 +69,8 @@ class Project(enum.Enum):
   TPU_PROD_ENV_LARGE_ADHOC = "tpu-prod-env-large-adhoc"
   TPU_PROD_ENV_ONE_VM = "tpu-prod-env-one-vm"
   TPU_PROD_ENV_LARGE_CONT = "tpu-prod-env-large-cont"
-
+  CINET_CMS = "cienet-cmcs"
+  CINET_C5 = "cienet-549295"
 
 class ImageProject(enum.Enum):
   """Common image projects for GPU."""
@@ -249,12 +250,26 @@ class XpkClusters:
       project=Project.CLOUD_TPU_MULTIPOD_DEV.value,
       zone=Zone.EUROPE_WEST4_B.value,
   )
+  TPU_V5P_8_CLUSTER_CUSTOM = XpkClusterConfig(
+      name="camilo-orbax-v5p8",
+      device_version=TpuVersion.V5P,
+      core_count=8,
+      project=Project.CINET_CMS.value,
+      zone=Zone.US_EAST5_A.value,
+  )
   TPU_V5E_256_CLUSTER = XpkClusterConfig(
       name="v5e-256-bodaborg-europe-west4",
       device_version=TpuVersion.V5E,
       core_count=256,
       project=Project.TPU_PROD_ENV_MULTIPOD.value,
       zone=Zone.EUROPE_WEST4_B.value,
+  )
+  TPU_V6E_64_CLUSTER_CUSTOM = XpkClusterConfig(
+      name="camilo-orbax-v6e-64",
+      device_version=TpuVersion.TRILLIUM,
+      core_count=64,
+      project=Project.CINET_C5.value,
+      zone=Zone.EUROPE_WEST4_A.value,
   )
   TPU_V6E_256_CLUSTER = XpkClusterConfig(
       name="bodaborg-v6e-256",
@@ -277,6 +292,7 @@ class XpkClusters:
       project=Project.TPU_PROD_ENV_ONE_VM.value,
       zone=Zone.US_EAST5_C.value,
   )
+
   GPU_A3_CLUSTER = XpkClusterConfig(
       name="ninacai-maxtext-a3",
       device_version=GpuVersion.XPK_H100,
@@ -311,9 +327,14 @@ class DockerImage(enum.Enum):
   """Common docker images."""
 
   XPK_JAX_TEST = "gcr.io/cloud-ml-auto-solutions/xpk_jax_test:latest"
+  XPK_JAX_TEST_CUSTOM = "gcr.io/cienet-cmcs/camiloquinones-runner:ejjt-2025-05-04-09-42-45"
+
   PYTORCH_NIGHTLY = (
       "us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/"
       f"xla:nightly_3.10_tpuvm_{datetime.datetime.today().strftime('%Y%m%d')}"
+  )
+  MICROBENCH_NIGHTLY = (
+      "gcr.io/tpu-prod-env-one-vm/microbenchmarks_runner:latest"
   )
   AXLEARN_TPU_JAX_STABLE_STACK = (
       "us-docker.pkg.dev/tpu-prod-env-multipod/bite/tpu/axlearn:"
@@ -370,7 +391,4 @@ class DockerImage(enum.Enum):
   CLOUD_HYBRIDSIM_NIGHTLY = (
       "us-docker.pkg.dev/cloud-tpu-v2-images-dev/hybridsim/cloud_hybridsim_gcloud_python:"
       f"{datetime.datetime.today().strftime('%Y-%m-%d')}"
-  )
-  MICROBENCH_NIGHTLY = (
-      "gcr.io/tpu-prod-env-one-vm/microbenchmarks_runner:latest"
   )
