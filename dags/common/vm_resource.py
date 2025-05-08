@@ -69,6 +69,7 @@ class Project(enum.Enum):
   TPU_PROD_ENV_LARGE_ADHOC = "tpu-prod-env-large-adhoc"
   TPU_PROD_ENV_ONE_VM = "tpu-prod-env-one-vm"
   TPU_PROD_ENV_LARGE_CONT = "tpu-prod-env-large-cont"
+  CIENET_CMCS="cienet-cmcs"
 
 
 class ImageProject(enum.Enum):
@@ -253,7 +254,7 @@ class XpkClusters:
       name="cienet-v5p-8-2",
       device_version=TpuVersion.V5P,
       core_count=8,
-      project=Project.CINET_CMS.value,
+      project=Project.CIENET_CMCS.value,
       zone=Zone.US_EAST5_A.value,
   )
   TPU_V5E_256_CLUSTER = XpkClusterConfig(

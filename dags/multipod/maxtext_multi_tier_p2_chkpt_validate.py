@@ -35,11 +35,16 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         workload_command = (
-          f"export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
-          f"python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full global_parameter_scale=1 base_output_directory={base_output_directory} "
-          f"dataset_type=synthetic steps=100 per_device_batch_size=1 ici_fsdp_parallelism=-1 ici_tensor_parallelism=4 max_target_length=256 "
-          f"reuse_example_batch=1 enable_emergency_checkpoint=true local_checkpoint_directory={ram_disk} local_checkpoint_period=10 "
-          f"use_replicator_service=True replicator_backup_interval_minutes=1 run_name=$WORKLOAD dataset_path={dataset_path} "
+          f"export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
+          f"export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
+          f"python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
+          f"global_parameter_scale=1 base_output_directory={base_output_directory} "
+          f"dataset_type=synthetic steps=100 per_device_batch_size=1 "
+          f"ici_fsdp_parallelism=-1 ici_tensor_parallelism=4 max_target_length=256 && "
+          f"reuse_example_batch=1 enable_emergency_checkpoint=true "
+          f"local_checkpoint_directory={ram_disk} local_checkpoint_period=10 && "
+          f"use_replicator_service=True replicator_backup_interval_minutes=1 "
+          f"run_name=$WORKLOAD dataset_path={dataset_path}"
         )
         maxtext_v5p_configs_test = gke_config.get_gke_config(
           num_slices=slice_num,
