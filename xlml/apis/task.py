@@ -19,12 +19,13 @@ import dataclasses
 import datetime
 import shlex
 from dags.common.quarantined_tests import QuarantineTests
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 import airflow
 from airflow.models.taskmixin import DAGNode
 from airflow.utils.task_group import TaskGroup
 from xlml.apis import gcp_config, metric_config, test_config
 from xlml.utils import gpu, metric, name_format, ssh, tpu, xpk, gke
+from xlml.utils.multitier_checkpoint import prepare_verification_targets, verify_checkpoint_files
 
 
 class BaseTask(abc.ABC):
@@ -294,10 +295,10 @@ class XpkTask(BaseTask):
       wait_for_workload_completion = xpk.wait_for_workload_completion.override(
           timeout=int(self.task_test_config.timeout.total_seconds()),
       )(
-          workload_id=workload_id,
-          project_id=self.task_gcp_config.project_name,
-          region=self.task_gcp_config.zone[:-2],
-          cluster_name=self.task_test_config.cluster_name,
+          workload_id,
+          self.task_gcp_config.project_name,
+          self.task_gcp_config.zone[:-2],
+          self.task_test_config.cluster_name,
       )
 
       clean_up_workload = xpk.clean_up_workload(
@@ -357,6 +358,91 @@ class XpkTask(BaseTask):
       )
       run_workload >> wait_for_workload_start
       return group
+
+  def clean_up_workload(
+      self,
+      workload_id: str,
+  ) -> DAGNode:
+    """Clean up TPU/GPU resources created by `provision`.
+
+    Args:
+      workload_id: an XCom value for the qualified instance name.
+      project_id: project of the instance.
+      zone: zone of the instance.
+      cluster_name: name of the cluster.
+
+    Returns:
+      A DAG node that deletes the resource and its owned nodes.
+
+    Raises:
+      AirflowTaskTimeout: An error occurs when execution_timeout is breached.
+    """
+    return xpk.clean_up_workload.override(group_id="clean_up")(
+        workload_id=workload_id,
+        project_id=self.task_gcp_config.project_name,
+        region=self.task_gcp_config.zone[:-2],
+        cluster_name=self.task_test_config.cluster_name,
+    )
+
+  def verify_last_workload_pod_ramdisk_checkpoint(
+    self,
+    workload_id: str,
+    expected_steps: List[int],  # Expected step numbers passed externally
+    workload_namespace: str = "default",  # Namespace of the training workload pods
+    emc_directory: str = "",  # emergency checkpoint directory path inside the CSI driver container
+    driver_namespace: str = "gke-managed-checkpointing",  # Namespace where CSI driver pods run
+    driver_label_selector: str = "k8s-app=high-scale-checkpointing",  # Label selector for CSI driver pods
+    driver_container_name: str = "csi",  # Container name within the driver pod for command execution
+  ) -> TaskGroup:
+    """
+    Orchestrate RAM disk checkpoint verification for the last workload pod using a TaskGroup.
+
+    The TaskGroup chains two subtasks:
+      a. Preparation Task: Prepares verification targets by listing workload pods, selecting the last
+       training pod, and identifying the corresponding CSI driver pod on the same node.
+      b. Verification Task: Executes a command on the identified CSI driver pod to check the contents
+       of the RAM disk directory and verifies the presence of checkpoint files.
+
+    Args:
+      project (str): GCP project ID.
+      region (str): GCP region.
+      cluster_name (str): Kubernetes cluster name.
+      workload_id (str): Unique training workload identifier.
+      expected_steps (List[int]): Allowed step numbers for the expected checkpoint file.
+      workload_namespace (str): Namespace where training workload pods are deployed.
+      ramdisk_directory (str): Path to the RAM disk directory inside the CSI driver container.
+      driver_namespace (str): Namespace where the CSI driver pods are deployed.
+      driver_label_selector (str): Label selector to identify the CSI driver pods.
+      driver_container_name (str): Container name in the CSI driver pod to execute the command.
+
+    Returns:
+      TaskGroup: A task group containing the chained tasks.
+    """
+    with TaskGroup("verify_checkpoint_group", tooltip="Checkpoint verification for last workload pod") as group:
+      # Preparation Task: Get verification targets (training pod and driver pod)
+      verification_targets = prepare_verification_targets(
+        project=self.task_gcp_config.project_name,
+        region=self.task_gcp_config.zone[:-2],
+        cluster_name=self.task_test_config.cluster_name,
+        workload_id=workload_id,
+        workload_namespace=workload_namespace,
+        driver_namespace=driver_namespace,
+        driver_label_selector=driver_label_selector,
+      )
+      # Verification Task: Check for checkpoint files in the RAM disk directory on the driver pod
+      verify_checkpoint_file=verify_checkpoint_files(
+        verification_targets,
+        emc_directory,
+        driver_container_name,
+        workload_id,
+        project=self.task_gcp_config.project_name,
+        region=self.task_gcp_config.zone[:-2],
+        cluster_name=self.task_test_config.cluster_name,
+        expected_steps=expected_steps,
+      )
+      verification_targets >> verify_checkpoint_file
+
+    return group
 
   def post_process(self, result_location: Optional[str] = None) -> DAGNode:
     """Process metrics and metadata, and insert them into BigQuery tables.
