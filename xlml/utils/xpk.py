@@ -27,7 +27,7 @@ from xlml.utils import gke
 from dags.common.vm_resource import GpuVersion
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
-MAIN_BRANCH = "v0.4.1"
+MAIN_BRANCH = "main"
 # Duration = past 7 days
 LOGGING_URL_FORMAT = (
     "https://pantheon.corp.google.com/logs/query;"
@@ -77,49 +77,6 @@ def generate_workload_id(benchmark_id: str) -> str:
   return f"{short_benchmark}{short_id}"
 
 
-# TODO Severus can work here if he wants or delete it.
-# @task.sensor(poke_interval=20, timeout=600, mode="reschedule")
-# def check_loacal_ramdisk(
-#     task_id: str,
-#     project_id: str,
-#     region: str,
-#     cluster_name: str,
-#     workload_id: str,
-#     ramdisk_dir: str,
-#   ) -> bool:
-#   """Check locally in the working pod while executing the ramdisk to see if follow HASH format"""
-#   core_api = _get_core_api_client(project_id, region, cluster_name)
-#   pods = _list_workload_pods(core_api, workload_id)
-
-#   if any(pod.status.phase in ["Pending"] for pod in pods.items):
-#     logging.info("Some of the pods is still pending. Waiting to start")
-#     return False
-
-#   validate_pod = []
-#   cmd = (
-#     f"bash ls /{ramdisk_dir}"
-#   )
-#   try:
-#     for pod in pods.items:
-#       if pod.status.phase == "Failed":
-#         # Don't keep retrying if the pod has failed
-#         raise AirflowFailException(f"Bad pod phase: {pod.status.phase}")
-#       elif pod.status.phase in ["Unknown"]:
-#         raise RuntimeError(f"Bad pod phase: {pod.status.phase}")
-#   finally:
-#       try:
-#         if pod.status.phase == "Running":
-#           ramdisk_stdout = core_api.connect_get_namespaced_pod_exec(
-#             name=pod.metadata.name, namespace=pod.metadata.namespace,
-#             command=cmd, stderr=True, stdin=False, stdout=True,
-#           )
-#           logging.info("After executing {cmd}: {ramdisk_stdout}")
-#           return True
-#       except k8s_client.rest.ApiException as e:
-#         logging.error(f"Error executing command in pod {pod.metadata.name} in namespace {pod.metadata.namespace}: {e}")
-#         raise
-
-
 @task
 def run_workload(
     task_id: str,
@@ -136,7 +93,7 @@ def run_workload(
     use_vertex_tensorboard: bool = False,
     use_pathways: bool = False,
     ramdisk_directory: str = "",  # Directory for enabling emergency checkpointing
-    mtc_enabled: bool = False,
+    mtc_enabled: bool = False,  # It enables MTC phase-2 drivers
     xpk_branch: str = MAIN_BRANCH,
 ):
   """Run workload through xpk tool."""
@@ -164,7 +121,7 @@ def run_workload(
     if ramdisk_directory:
       workload_create_cmd += f" --ramdisk-directory={ramdisk_directory}"
     if mtc_enabled:
-       workload_create_cmd += " --mtc-enabled"
+      workload_create_cmd += " --mtc-enabled"
 
     # If using a valid GPU and the XPK branch is set to "main", then branch is switch to "v0.4.1".
     if is_valid_gpu_version(accelerator_type) and xpk_branch == MAIN_BRANCH:
@@ -188,7 +145,6 @@ def run_workload(
     assert (
         result.exit_code == 0
     ), f"XPK command failed with code {result.exit_code}"
-
 
 
 def _get_core_api_client(
@@ -258,9 +214,8 @@ def run_interruption_cmd(
     region: str,
     cluster_name: str,
     workload_id: str,
-)-> bool:
+) -> bool:
   """Run command to interrupt pod ."""
-
   core_api = _get_core_api_client(project_id, region, cluster_name)
   pods = _list_workload_pods(core_api, workload_id)
 

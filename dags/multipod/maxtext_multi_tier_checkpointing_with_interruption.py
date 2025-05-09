@@ -18,46 +18,47 @@ A DAG to run MaxText multi-tier checkpointing tests.
 import datetime
 from airflow import models
 from dags import composer_env, gcs_bucket
-from dags.common import test_owner
-from dags.common.vm_resource import TpuVersion, Zone, DockerImage, XpkClusters
+from dags.common.vm_resource import DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode  # Run once a day at 10 am UTC (2 am PST)
 
 SCHEDULED_TIME = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_muti_tier_checkpointing_sav02_interrupt",
+    dag_id="maxtext_multi_tier_checkpointing_sav02_interrupt",
     schedule=None,
     tags=[
         "multipod_team",
         "maxtext",
-        "muti_tier_checkpointing_sav02",
+        "multi_tier_checkpointing_sav02",
     ],
     start_date=datetime.datetime(2025, 2, 27),
     catchup=False,
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.BASE_OUTPUT_DIR_CAMILO}/maxtext_multi_tier_checkpointing_phase2"
+      f"{gcs_bucket.BASE_OUTPUT_DIR}/maxtext_multi_tier_checkpointing_phase2"
   )
   dataset_path = gcs_bucket.TRAIN_DATA_C4
   docker_images = [
-      (SetupMode.STABLE,DockerImage.XPK_JAX_TEST_CUSTOM),
+      (SetupMode.STABLE,DockerImage.XPK_JAX_TEMPLATED_TEST),
   ]
   test_configs = {
       # accelerator: list of slices to test
       "v5p-8": [2],
+      # "v6e-64":[2],
   }
   clusters = {
       # accelerator: cluster name
-      "v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_CUSTOM,
+      "v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_CIENET,
+      # "v6e-64": XpkClusters.TPU_V6E_64_CLUSTER_CUSTOM,
   }
   params = {
-    "ramdisk":"/local",
-    "steps":150,
-    "chk_period":200,
-    "chk_local":25,
-    "repl_backup_min":5,
+    "ramdisk": "/local",
+    "steps": 150,
+    "chk_period": 200,
+    "chk_local": 25,
+    "repl_backup_min": 5,
   }
 
   # Fix for RAMDISK XPK Comand
@@ -67,7 +68,7 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         command = (
-            "bash end_to_end/save_mtc/test_mtc_phase_2_save_path.sh"
+            "bash end_to_end/test_mtc_phase_2_save_path.sh"
             f" multitiercheckpointing-{slice_num}x-{accelerator}"
             f" {base_output_directory} {dataset_path}"
             f" {params['ramdisk']} {params['steps']} "
@@ -75,7 +76,7 @@ with models.DAG(
             f" {params['repl_backup_min']}",
         )
 
-        maxtext_v5p8_save_checkpoint= gke_config.get_gke_config(
+        maxtext_v5p8_save_checkpoint = gke_config.get_gke_config(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
@@ -83,7 +84,7 @@ with models.DAG(
             run_model_cmds=command,
             docker_image=image.value,
             test_owner="Camilo Quinones",
-        ).run(ramdisk_directory="local",xpk_branch="main",skip_post_process=True,test_to_run="interrupt")
+        ).run_with_interruption(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
       clean_cmd = (f"rm -rf {params['ramdisk']}/*",)
 
@@ -95,7 +96,7 @@ with models.DAG(
             run_model_cmds=clean_cmd,
             docker_image=image.value,
             test_owner="Camilo Quinones",
-      ).run(ramdisk_directory="local",xpk_branch="main",skip_post_process=True)
+      ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
       (
         maxtext_v5p8_save_checkpoint

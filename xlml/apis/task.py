@@ -175,7 +175,6 @@ class XpkTask(BaseTask):
       ramdisk_directory: str = "",
       mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
-      test_to_run: str= "",
   ) -> DAGNode:
     """Run a test job within a docker image.
 
@@ -189,36 +188,86 @@ class XpkTask(BaseTask):
       post_process.
     """
     with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
-      if test_to_run == "interrupt":
-        run_model, gcs_path = self.run_model_with_interruption(
-            gcs_location,
-            use_vertex_tensorboard,
-            use_pathways,
-            ramdisk_directory,
-            mtc_enabled,
-            xpk_branch,
-        )
-      elif test_to_run == "check_ramdisk":
-        run_model, gcs_path = self.run_model_check_local_ramdisk(
-            gcs_location,
-            use_vertex_tensorboard,
-            use_pathways,
-            ramdisk_directory,
-            mtc_enabled,
-            xpk_branch,
-        )
-      else:
-        run_model, gcs_path = self.run_model(
-            gcs_location,
-            use_vertex_tensorboard,
-            use_pathways,
-            ramdisk_directory,
-            mtc_enabled,
-            xpk_branch,
-        )
+      run_model, gcs_path = self.run_model(
+          gcs_location,
+          use_vertex_tensorboard,
+          use_pathways,
+          ramdisk_directory,
+          mtc_enabled,
+          xpk_branch,
+      )
       if not skip_post_process:
         run_model >> self.post_process(gcs_path)
+    return group
 
+  def run_with_interruption(
+      self,
+      *,
+      gcs_location: Optional[airflow.XComArg] = None,
+      use_vertex_tensorboard: bool = False,
+      use_pathways: bool = False,
+      skip_post_process: bool = False,
+      ramdisk_directory: str = "",
+      mtc_enabled: bool = False,
+      xpk_branch: str = xpk.MAIN_BRANCH,
+  ) -> DAGNode:
+    """Run a test job within a docker image.
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A task group with the following tasks chained: run_model and
+      post_process.
+    """
+    with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
+      run_model, gcs_path = self.run_model_with_interruption(
+        gcs_location,
+        use_vertex_tensorboard,
+        use_pathways,
+        ramdisk_directory,
+        mtc_enabled,
+        xpk_branch,
+      )
+      if not skip_post_process:
+        run_model >> self.post_process(gcs_path)
+    return group
+
+  def run_with_check_local_ramdisk(
+      self,
+      *,
+      gcs_location: Optional[airflow.XComArg] = None,
+      use_vertex_tensorboard: bool = False,
+      use_pathways: bool = False,
+      skip_post_process: bool = False,
+      ramdisk_directory: str = "",
+      mtc_enabled: bool = False,
+      xpk_branch: str = xpk.MAIN_BRANCH,
+  ) -> DAGNode:
+    """Run a test job within a docker image.
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A task group with the following tasks chained: run_model and
+      post_process.
+    """
+    with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
+      run_model, gcs_path = self.run_model_check_local_ramdisk(
+        gcs_location,
+        use_vertex_tensorboard,
+        use_pathways,
+        ramdisk_directory,
+        mtc_enabled,
+        xpk_branch,
+      )
+      if not skip_post_process:
+        run_model >> self.post_process(gcs_path)
     return group
 
   def run_with_name_gen_and_quarantine(
@@ -319,12 +368,14 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
       )
+
       clean_up_workload = xpk.clean_up_workload(
           workload_id=workload_id,
           project_id=self.task_gcp_config.project_name,
           zone=self.task_gcp_config.zone,
           cluster_name=self.task_test_config.cluster_name,
       )
+
       (
           (workload_id, gcs_path)
           >> launch_workload
@@ -339,7 +390,7 @@ class XpkTask(BaseTask):
       use_vertex_tensorboard: bool = False,
       use_pathways: bool = False,
       ramdisk_directory: str = "",
-      mtc_enabled=False,
+      mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
   ) -> DAGNode:
     """Run the TPU/GPU test in `task_test_config` using xpk.
@@ -368,6 +419,7 @@ class XpkTask(BaseTask):
           use_vertex_tensorboard,
           use_pathways,
           ramdisk_directory,
+          mtc_enabled,
           xpk_branch,
       )
       check_local_ramdisk = xpk.check_loacal_ramdisk(
@@ -405,7 +457,7 @@ class XpkTask(BaseTask):
       use_vertex_tensorboard: bool = False,
       use_pathways: bool = False,
       ramdisk_directory: str = "",
-      mtc_enabled = False,
+      mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
   ) -> DAGNode:
     """Run the TPU/GPU test in `task_test_config` using xpk.
@@ -472,13 +524,12 @@ class XpkTask(BaseTask):
       (
         (workload_id, gcs_path)
         >> launch_workload_with_interruption
-        >>wait_for_workload_to_fail_and_cleanup
+        >> wait_for_workload_to_fail_and_cleanup
         >> launch_workload
         >> wait_for_workload_completion
         >> clean_up_workload
       )
     return group, gcs_path
-
 
   def launch_workload(
       self,
@@ -530,7 +581,7 @@ class XpkTask(BaseTask):
       use_vertex_tensorboard: bool,
       use_pathways: bool = False,
       ramdisk_directory: str = "",
-      mtc_enabled: bool =  False,
+      mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
   ) -> DAGNode:
     """Create the workload and wait for it to provision."""
@@ -928,9 +979,9 @@ class GpuGkeTask(BaseTask):
         },
         "spec": {
             "activeDeadlineSeconds": int(
-                 self.task_test_config.timeout.total_seconds()
-             )
-             or 3600,
+                self.task_test_config.timeout.total_seconds()
+            )
+            or 3600,
             "backoffLimit": 0,
             "completionMode": "Indexed",
             "completions": self.task_test_config.num_hosts,

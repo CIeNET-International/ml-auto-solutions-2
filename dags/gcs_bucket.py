@@ -20,11 +20,12 @@ IMAGENET_DIR = "gs://ml-auto-solutions/data/imagenet"
 TFDS_DATA_DIR = "gs://ml-auto-solutions/data/tfds-data"
 MAXTEXT_DIR = "gs://max-datasets-rogue"
 AXLEARN_DIR = "gs://axlearn-public/tensorflow_datasets"
-TRAIN_DATA_C4 = "gs://camilo-bucket-orbax"
+# TRAIN_DATA_C4 = "gs://camilo-bucket-orbax"
+TRAIN_DATA_C4 = "gs://severus-maxtext-c4-dataset"
 
 # GCS bucket for output
-BASE_OUTPUT_DIR = "gs://ml-auto-solutions/output"
 # Multi-tier checkpointing need special permission for GCS Bucket
- # For further question reach out to  Multi-tier Checkpointing Owners.
+# For further question reach out to  Multi-tier Checkpointing Owners.
 MTC_BUCKET = "gs://mtc-bucket-us-east5/output"
-BASE_OUTPUT_DIR_CAMILO= "gs://camilo-bucket-orbax/output_airflow"
+# BASE_OUTPUT_DIR = "gs://ml-auto-solutions/output"
+BASE_OUTPUT_DIR = "gs://severus-maxtext-c4-dataset/output_airflow"
