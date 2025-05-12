@@ -144,6 +144,7 @@ def delete_one_workload_pod(
   # Sensor will poke again if pod still exists
   return False
 
+
 @task
 def prepare_verification_targets(
   project: str,
@@ -385,3 +386,27 @@ def verify_last_workload_pod_ramdisk_checkpoint(
     )
 
   return group
+
+@task
+def simple_sleep(sleep_seconds: int):
+    """
+    A simple task that pauses execution for a specified number of seconds
+    using time.sleep().
+
+    Note: This task occupies a worker slot for the entire sleep duration.
+    It is not a sensor and does not use the 'poke' or 'reschedule' mechanism.
+
+    Args:
+        sleep_seconds: The number of seconds the task should sleep.
+    """
+    if sleep_seconds < 0:
+        logging.warning(f"Requested sleep time is negative: {sleep_seconds}. Skipping sleep.")
+        return # Or raise an error, depending on desired behavior
+
+    logging.info(f"Simple Sleep Task: Starting sleep for {sleep_seconds} seconds.")
+
+    # --- The sleep happens here ---
+    time.sleep(sleep_seconds)
+    # -----------------------------
+
+    logging.info(f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds.")

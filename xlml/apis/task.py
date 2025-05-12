@@ -467,6 +467,13 @@ class XpkTask(BaseTask):
           self.task_test_config.cluster_name,
       )
 
+      # Wait for a fixed time before deleting a workload pod (simulate interruption)
+      sleep_time = 600
+
+      delay_delte_pod = multitier_checkpoint.simple_sleep(
+          sleep_seconds=sleep_time,
+      )
+
       delete_one_workload_pod = multitier_checkpoint.delete_one_workload_pod(
           workload_id=workload_id,
           project=self.task_gcp_config.project_name,
@@ -481,8 +488,9 @@ class XpkTask(BaseTask):
       )
       (
           launch_workload
-          >> [wait_for_workload_completion, delete_one_workload_pod]
+          >> [wait_for_workload_completion, delay_delte_pod]
       )
+      delay_delte_pod >> delete_one_workload_pod
       wait_for_workload_completion >> clean_up_workload
 
       return group, gcs_path
@@ -714,7 +722,7 @@ class XpkTask(BaseTask):
     """
     with TaskGroup(group_id="verify_checkpoint_group", tooltip="Checkpoint verification for last workload pod") as group:
       # Preparation Task: Get verification targets (training pod and driver pod)
-      verification_targets = prepare_verification_targets(
+      verification_targets = multitier_checkpoint.prepare_verification_targets(
         project=self.task_gcp_config.project_name,
         region=self.task_gcp_config.zone[:-2],
         cluster_name=self.task_test_config.cluster_name,
@@ -724,7 +732,7 @@ class XpkTask(BaseTask):
         driver_label_selector=driver_label_selector,
       )
       # Verification Task: Check for checkpoint files in the RAM disk directory on the driver pod
-      verify_checkpoint_file=verify_checkpoint_files(
+      verify_checkpoint_file=multitier_checkpoint.verify_checkpoint_files(
         verification_targets,
         emc_directory,
         driver_container_name,
