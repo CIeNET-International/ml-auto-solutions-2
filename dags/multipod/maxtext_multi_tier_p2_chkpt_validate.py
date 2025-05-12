@@ -41,7 +41,7 @@ with models.DAG(
             "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
             "python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
             f"global_parameter_scale=1 base_output_directory={base_output_directory} "
-            f"dataset_type=synthetic steps=5000 per_device_batch_size=1 "
+            f"dataset_type=synthetic steps=2500 per_device_batch_size=1 "
             "ici_fsdp_parallelism=-1 ici_tensor_parallelism=4 max_target_length=256 "
             "reuse_example_batch=1 enable_emergency_checkpoint=true "
             f"local_checkpoint_directory={ram_disk} local_checkpoint_period=100 "
