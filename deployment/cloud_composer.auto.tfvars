@@ -1,16 +1,12 @@
 project_config = {
-  project_name   = "cloud-ml-auto-solutions"
-  project_number = "24860729792"
-  project_region = "us-central1"
+  project_name   = "cienet-cmcs"
+  project_number = "562977990677"
+  project_region = "us-east5"
 }
 
 environment_config = [
   {
-    environment_name   = "ml-automation-solutions"
-    service_account_id = "ml-auto-solutions"
-  },
-  {
-    environment_name   = "ml-automation-solutions-dev"
-    service_account_id = "ml-auto-solutions-dev"
+    environment_name   = "severus-xlml-solutions"
+    service_account_id = "severus-xlml-sa"
   }
 ]
