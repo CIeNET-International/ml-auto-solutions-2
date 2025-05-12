@@ -403,11 +403,8 @@ def simple_sleep(sleep_seconds: int):
     if sleep_seconds < 0:
         logging.warning(f"Requested sleep time is negative: {sleep_seconds}. Skipping sleep.")
         return # Or raise an error, depending on desired behavior
-
     logging.info(f"Simple Sleep Task: Starting sleep for {sleep_seconds} seconds.")
-
     # --- The sleep happens here ---
     time.sleep(sleep_seconds)
     # -----------------------------
-
     logging.info(f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds.")
