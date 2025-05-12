@@ -271,7 +271,7 @@ class XpkTask(BaseTask):
         run_model >> self.post_process(gcs_path)
     return group
 
-  def run_with_interuption_and_validation(
+  def run_with_interruption_and_validation(
       self,
       *,
       gcs_location: Optional[airflow.XComArg] = None,
@@ -294,7 +294,7 @@ class XpkTask(BaseTask):
       post_process.
     """
     with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
-      run_model, gcs_path = self.run_model_with_interuption_and_validation(
+      run_model, gcs_path = self.run_model_with_interruption_and_validation(
           gcs_location,
           use_vertex_tensorboard,
           use_pathways,
@@ -421,7 +421,7 @@ class XpkTask(BaseTask):
       )
       return group, gcs_path
 
-  def run_model_with_interuption_and_validation(
+  def run_model_with_interruption_and_validation(
       self,
       gcs_location: Optional[airflow.XComArg] = None,
       use_vertex_tensorboard: bool = False,
@@ -440,7 +440,7 @@ class XpkTask(BaseTask):
     Returns:
       A DAG node that executes the model test.
     """
-    with TaskGroup(group_id="run_model_with_interuption_and_validation") as group:
+    with TaskGroup(group_id="run_model_with_interruption_and_validation") as group:
       workload_id = xpk.generate_workload_id(self.task_test_config.benchmark_id)
       if gcs_location:
         gcs_path = gcs_location

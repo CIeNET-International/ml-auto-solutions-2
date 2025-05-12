@@ -58,7 +58,7 @@ with models.DAG(
           run_model_cmds=workload_command,
           docker_image=image.value,
           test_owner=test_owner.JACKY_F,
-        ).run_with_interuption_and_validation(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", gcs_location=base_output_directory, skip_post_process=True)
+        ).run_with_interruption_and_validation(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", gcs_location=base_output_directory, skip_post_process=True)
 
         # cleanup run: unique test_name
         cleanup_command = "rm -rf /local/*"
