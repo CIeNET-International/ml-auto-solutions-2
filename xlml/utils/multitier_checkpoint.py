@@ -8,6 +8,7 @@ from airflow.exceptions import AirflowException
 from airflow.utils.task_group import TaskGroup
 from typing import Union, List
 import re
+import random
 
 def _get_core_api_client(
     project: str, region: str, cluster_name: str
@@ -87,6 +88,61 @@ def _execute_command_in_pod(
   except k8s_client.rest.ApiException as e:
     logging.error(f"Error executing command in pod {pod.metadata.name}: {e}")
     raise
+
+@task.sensor(poke_interval=1000, mode="reschedule")
+def delete_one_workload_pod(
+  project: str,
+  region: str,
+  cluster_name: str,
+  workload_id: str,
+  namespace: str = "default",
+) -> bool:
+  """
+  Delete one pod associated with the given workload_id and return True if it is deleted or completed.
+
+  Args:
+    project (str): GCP project ID.
+    region (str): GCP region.
+    cluster_name (str): Kubernetes cluster name.
+    workload_id (str): Workload identifier.
+    namespace (str): Namespace where the pods are running.
+
+  Returns:
+    bool: True if the pod is deleted or completed, False otherwise.
+  """
+  logging.info(f"Deleting one pod for workload_id '{workload_id}' in namespace '{namespace}'")
+  core_api = _get_core_api_client(project, region, cluster_name)
+  pods = _list_workload_pods(core_api, workload_id)
+  if not pods.items:
+    logging.info(f"No pods found for workload_id '{workload_id}' in namespace '{namespace}'")
+    return True
+
+  pod = random.choice(pods.items)
+  pod_name = pod.metadata.name
+  pod_status = pod.status.phase
+  # Check pod status using pod.status.conditions if available
+  pod_conditions = getattr(pod.status, "conditions", None)
+  if pod_conditions:
+    if any(getattr(condition, "type", "") == "Failed" for condition in pod_conditions):
+      logging.info(f"Pod '{pod_name}' has condition type 'Failed', considered complete.")
+      return True
+    if any(getattr(condition, "type", "") == "Complete" for condition in pod_conditions):
+      logging.info(f"Pod '{pod_name}' has condition type 'Complete', considered complete.")
+      return True
+
+  try:
+    logging.info(f"Deleting pod '{pod_name}' in namespace '{namespace}'")
+    core_api.delete_namespaced_pod(name=pod_name, namespace=namespace)
+  except ApiException as e:
+    if e.status == 404:
+      logging.info(f"Pod '{pod_name}' already deleted.")
+      return True
+    else:
+      logging.error(f"Failed to delete pod '{pod_name}': {e}")
+      raise
+
+  # Sensor will poke again if pod still exists
+  return False
 
 @task
 def prepare_verification_targets(
