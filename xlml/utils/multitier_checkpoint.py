@@ -1,4 +1,4 @@
-from datetime import time
+import time
 from absl import logging
 from kubernetes import client as k8s_client
 from kubernetes.client.rest import ApiException
@@ -90,7 +90,7 @@ def _execute_command_in_pod(
     logging.error(f"Error executing command in pod {pod.metadata.name}: {e}")
     raise
 
-@task.sensor(poke_interval=600, mode="reschedule")
+@task.sensor(poke_interval=900, mode="reschedule")
 def delete_one_workload_pod(
   project: str,
   region: str,

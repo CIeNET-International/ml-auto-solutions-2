@@ -468,7 +468,7 @@ class XpkTask(BaseTask):
       )
 
       # Wait for a fixed time before deleting a workload pod (simulate interruption)
-      sleep_time = 600
+      sleep_time = 900
 
       delay_delte_pod = multitier_checkpoint.simple_sleep(
           sleep_seconds=sleep_time,
@@ -480,21 +480,21 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
       )
-      clean_up_workload = xpk.clean_up_workload(
-          workload_id=workload_id,
-          project_id=self.task_gcp_config.project_name,
-          zone=self.task_gcp_config.zone,
-          cluster_name=self.task_test_config.cluster_name,
-      )
+      # clean_up_workload = xpk.clean_up_workload(
+      #     workload_id=workload_id,
+      #     project_id=self.task_gcp_config.project_name,
+      #     zone=self.task_gcp_config.zone,
+      #     cluster_name=self.task_test_config.cluster_name,
+      # )
       (
           launch_workload
           >> [wait_for_workload_completion, delay_delte_pod]
       )
       delay_delte_pod >> delete_one_workload_pod
-      wait_for_workload_completion >> clean_up_workload
+      # wait_for_workload_completion >> clean_up_workload
 
       return group, gcs_path
-    
+
   def run_model_check_local_ramdisk(
       self,
       gcs_location: Optional[airflow.XComArg] = None,
