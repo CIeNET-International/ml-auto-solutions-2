@@ -61,7 +61,7 @@ with models.DAG(
         ).run_with_interruption_and_validation(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", gcs_location=base_output_directory, skip_post_process=True)
 
         # cleanup run: unique test_name
-        cleanup_command = "rm -rf /local/*"
+        cleanup_command = (f"rm -rf {ram_disk}/*",)
         ram_disk_cleanup = gke_config.get_gke_config(
           num_slices=slice_num,
           cluster=clusters[accelerator],
