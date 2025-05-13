@@ -29,3 +29,6 @@ TRAIN_DATA_C4 = "gs://severus-maxtext-c4-dataset"
 MTC_BUCKET = "gs://mtc-bucket-us-east5/output"
 # BASE_OUTPUT_DIR = "gs://ml-auto-solutions/output"
 BASE_OUTPUT_DIR = "gs://severus-maxtext-c4-dataset/output_airflow"
+
+# Test camilo DELETE LATER
+BASE_OUTPUT_DIR_TEST = "gs://camilo-bucket-orbax"
