@@ -27,7 +27,7 @@ from xlml.utils import gke
 from dags.common.vm_resource import GpuVersion
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
-MAIN_BRANCH = "v0.4.1"
+MAIN_BRANCH = "main"
 # Duration = past 7 days
 LOGGING_URL_FORMAT = (
     "https://pantheon.corp.google.com/logs/query;"
@@ -51,6 +51,8 @@ def get_xpk_setup_cmd(tmpdir, branch: str = MAIN_BRANCH):
   cmds = [
       "set -xue",
       clone_branch,
+      f"cd {tmpdir}/xpk/src/xpk",
+      "sed -i '/validate_dependencies()/s/^/#/' main.py",
       "pip install ruamel.yaml docker",
   ]
   return cmds
@@ -114,7 +116,6 @@ def run_workload(
         f" --{multi_keyword}={num_slices} --docker-image={docker_image}"
         f" --project={cluster_project} --zone={zone}"
         f" --env {metric_config.SshEnvVars.GCS_OUTPUT.name}={gcs_path}"
-        " --restart-on-user-code-failure"
     )
     if ramdisk_directory:
       workload_create_cmd += f" --ramdisk-directory={ramdisk_directory}"

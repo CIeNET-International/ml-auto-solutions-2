@@ -243,11 +243,11 @@ class XpkClusters:
       zone=Zone.US_CENTRAL2_B.value,
   )
   TPU_V5P_8_CLUSTER = XpkClusterConfig(
-      name="v5p-8-bodaborg-europe-west4-b",
+      name="cienet-v5p-8-2",
       device_version=TpuVersion.V5P,
       core_count=8,
-      project=Project.CLOUD_TPU_MULTIPOD_DEV.value,
-      zone=Zone.EUROPE_WEST4_B.value,
+      project="cienet-cmcs",
+      zone="us-east5-a",
   )
   TPU_V5E_256_CLUSTER = XpkClusterConfig(
       name="v5e-256-bodaborg-europe-west4",
@@ -351,8 +351,7 @@ class DockerImage(enum.Enum):
       f"{datetime.datetime.today().strftime('%Y-%m-%d')}"
   )
   MAXTEXT_TPU_JAX_NIGHTLY = (
-      "gcr.io/tpu-prod-env-multipod/maxtext_jax_nightly:"
-      f"{datetime.datetime.today().strftime('%Y-%m-%d')}"
+      "gcr.io/cienet-cmcs/severus-runner:latest"
   )
   MAXTEXT_GPU_JAX_PINNED = (
       "gcr.io/tpu-prod-env-multipod/maxtext_gpu_jax_pinned:"
