@@ -351,7 +351,7 @@ class DockerImage(enum.Enum):
       f"{datetime.datetime.today().strftime('%Y-%m-%d')}"
   )
   MAXTEXT_TPU_JAX_NIGHTLY = (
-      "gcr.io/cienet-cmcs/severus-runner:latest"
+      "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
   )
   MAXTEXT_GPU_JAX_PINNED = (
       "gcr.io/tpu-prod-env-multipod/maxtext_gpu_jax_pinned:"

@@ -69,7 +69,7 @@ with models.DAG(
             run_model_cmds=command,
             docker_image=image.value,
             test_owner=test_owner.JACKY_F,
-        ).run_with_interruption(ramdisk_directory="/local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run_with_interruption(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
       clean_cmd = (f"rm -rf /local/*",)
       clean_ramdisk_one = gke_config.get_gke_config(
@@ -80,9 +80,9 @@ with models.DAG(
             run_model_cmds=clean_cmd,
             docker_image=image.value,
             test_owner=test_owner.JACKY_F,
-      ).run(ramdisk_directory="/local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+      ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
       (
           maxtext_save_checkpoint
-          # >> clean_ramdisk_one
+          >> clean_ramdisk_one
       )
