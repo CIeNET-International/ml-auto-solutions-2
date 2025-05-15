@@ -525,7 +525,7 @@ class XpkTask(BaseTask):
             self.task_test_config.gcs_subfolder,
             self.task_test_config.benchmark_id,
         )
-      launch_workload = self.launch_workload(
+      launch_workload = self.launch_workload_with_interruption_and_validation(
           workload_id,
           gcs_path,
           use_vertex_tensorboard,
@@ -533,12 +533,6 @@ class XpkTask(BaseTask):
           ramdisk_directory,
           mtc_enabled,
           xpk_branch,
-      )
-      check_local_ramdisk = xpk.check_loacal_ramdisk(
-          workload_id=workload_id,
-          project_id=self.task_gcp_config.project_name,
-          region=self.task_gcp_config.zone[:-2],
-          cluster_name=self.task_test_config.cluster_name,
       )
       wait_for_workload_completion = xpk.wait_for_workload_completion.override(
           timeout=int(self.task_test_config.timeout.total_seconds()),
@@ -601,24 +595,6 @@ class XpkTask(BaseTask):
           mtc_enabled,
           xpk_branch,
       )
-      wait_for_workload_to_fail_and_cleanup = xpk.wait_for_workload_to_terminate.override(
-          timeout=int(self.task_test_config.timeout.total_seconds()),
-      )(
-          workload_id=workload_id,
-          project_id=self.task_gcp_config.project_name,
-          region=self.task_gcp_config.zone[:-2],
-          cluster_name=self.task_test_config.cluster_name,
-      )
-      workload_id = xpk.generate_workload_id(self.task_test_config.benchmark_id)
-      launch_workload = self.launch_workload(
-          workload_id,
-          gcs_path,
-          use_vertex_tensorboard,
-          use_pathways,
-          ramdisk_directory,
-          mtc_enabled,
-          xpk_branch,
-      )
       wait_for_workload_completion = xpk.wait_for_workload_completion.override(
           timeout=int(self.task_test_config.timeout.total_seconds()),
       )(
@@ -636,8 +612,6 @@ class XpkTask(BaseTask):
       (
         (workload_id, gcs_path)
         >> launch_workload_with_interruption
-        >> wait_for_workload_to_fail_and_cleanup
-        >> launch_workload
         >> wait_for_workload_completion
         >> clean_up_workload
       )
@@ -684,6 +658,81 @@ class XpkTask(BaseTask):
           cluster_name=self.task_test_config.cluster_name,
       )
       run_workload >> wait_for_workload_start
+      return group
+
+  def launch_workload_with_interruption_and_validation(
+      self,
+      workload_id: str,
+      gcs_path: str,
+      use_vertex_tensorboard: bool,
+      use_pathways: bool = False,
+      ramdisk_directory: str = "",
+      mtc_enabled: bool = False,
+      xpk_branch: str = xpk.MAIN_BRANCH,
+  ) -> DAGNode:
+    """Create the workload and wait for it to provision."""
+    with TaskGroup(group_id="launch_workload_with_interruption") as group:
+
+      run_workload = xpk.run_workload.override(
+          owner=self.task_test_config.task_owner
+      )(
+          task_id="run_workload",
+          cluster_project=self.task_gcp_config.project_name,
+          zone=self.task_gcp_config.zone,
+          cluster_name=self.task_test_config.cluster_name,
+          benchmark_id=self.task_test_config.benchmark_id,
+          workload_id=workload_id,
+          gcs_path=gcs_path,
+          docker_image=self.task_test_config.docker_image,
+          accelerator_type=self.task_test_config.accelerator.name,
+          run_cmds=self.task_test_config.test_script,
+          num_slices=self.task_test_config.num_slices,
+          use_vertex_tensorboard=use_vertex_tensorboard,
+          use_pathways=use_pathways,
+          ramdisk_directory=ramdisk_directory,
+          mtc_enabled=mtc_enabled,
+          xpk_branch=xpk_branch,
+      )
+      wait_for_workload_start = xpk.wait_for_workload_start.override(
+          timeout=self.workload_provision_timeout.total_seconds()
+      )(
+          workload_id=workload_id,
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+      )
+      check_local_ramdisk = xpk.check_local_ramdisk(
+          workload_id=workload_id,
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+          ramdisk_dir=ramdisk_directory,
+      )
+      run_interruption_workload = xpk.run_interruption_cmd.override(
+          owner=self.task_test_config.task_owner
+      )(
+          task_id="run_interruption_cmd",
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+          workload_id=workload_id,
+      )
+      waiting_workload_resume = xpk.wait_for_workload_resume(
+        task_id = "wait_for_all_pods_running",
+        project_id=self.task_gcp_config.project_name,
+        region=self.task_gcp_config.zone[:-2],
+        cluster_name=self.task_test_config.cluster_name,
+        workload_id=workload_id,
+      )
+      check_local_ramdisk_2 = xpk.check_local_ramdisk(
+          workload_id=workload_id,
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+          ramdisk_dir=ramdisk_directory,
+      )
+
+      run_workload >> wait_for_workload_start >> check_local_ramdisk >> run_interruption_workload >> waiting_workload_resume >> check_local_ramdisk_2
       return group
 
   def verify_last_workload_pod_ramdisk_checkpoint(
@@ -745,7 +794,7 @@ class XpkTask(BaseTask):
       verification_targets >> verify_checkpoint_file
 
     return group
-
+  
   def launch_workload_with_interruption(
       self,
       workload_id: str,

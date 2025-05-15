@@ -264,6 +264,13 @@ class XpkClusters:
       project=Project.TPU_PROD_ENV_MULTIPOD.value,
       zone=Zone.EUROPE_WEST4_B.value,
   )
+  TPU_V5E_64_CLUSTER_CIENET = XpkClusterConfig(
+      name="camilo-orbax-v5e-64",
+      device_version=TpuVersion.V5E,
+      core_count=64,
+      project=Project.CINET_CMS.value,
+      zone=Zone.US_CENTRAL1_A.value,
+  )
   TPU_V5P_8_CLUSTER_CIENET = XpkClusterConfig(
       name="cienet-v5p-8-2",
       device_version=TpuVersion.V5P,
@@ -326,7 +333,7 @@ class XpkClusters:
 class DockerImage(enum.Enum):
   """Common docker images."""
   XPK_JAX_TEST = "gcr.io/cloud-ml-auto-solutions/xpk_jax_test:latest"
-  # XPK_JAX_TEST_CUSTOM = "gcr.io/cienet-cmcs/camiloquinones-runner:ejjt-2025-05-04-09-42-45"
+  XPK_JAX_TEST_CUSTOM = "gcr.io/cienet-cmcs/camiloquinones-runner:ekyk-2025-05-12-08-08-34"
   XPK_JAX_TEMPLATED_TEST = "gcr.io/cienet-cmcs/severus-runner:latest"
   PYTORCH_NIGHTLY = (
       "us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/"

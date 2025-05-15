@@ -25,12 +25,12 @@ from dags.multipod.configs.common import SetupMode  # Run once a day at 10 am UT
 SCHEDULED_TIME = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_checkpointing_sav02_interrupt",
+    dag_id="maxtext_multi_tier_checkpointing_sav04_GCS",
     schedule=None,
     tags=[
         "multipod_team",
         "maxtext",
-        "multi_tier_checkpointing_sav02",
+        "multi_tier_checkpointing_sav04_GCS",
     ],
     start_date=datetime.datetime(2025, 2, 27),
     catchup=False,
@@ -55,9 +55,9 @@ with models.DAG(
   }
   params = {
     "ramdisk": "/local",
-    "steps": 225,
+    "steps": 50,
     "chk_period": 200,
-    "chk_local": 25,
+    "chk_local": 10,
     "repl_backup_min": 5,
     "ici_tensor_parall": 1,
     "use_replicator":True,
@@ -84,11 +84,11 @@ with models.DAG(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name="maxtext-multi-tier-checkpointing-phase2-save",
+            test_name="maxtext-multi-tier-checkpointing-phase2-validation",
             run_model_cmds=command,
             docker_image=image.value,
             test_owner="Camilo Quinones",
-        ).run_with_interruption(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run_with_check_local_ramdisk(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
       clean_cmd = (f"rm -rf {params['ramdisk']}/*",)
 
