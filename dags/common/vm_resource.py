@@ -268,15 +268,8 @@ class XpkClusters:
       name="camilo-orbax-v5e-64",
       device_version=TpuVersion.V5E,
       core_count=64,
-      project=Project.CINET_CMS.value,
+      project=Project.CIENET_CMCS.value,
       zone=Zone.US_CENTRAL1_A.value,
-  )
-  TPU_V5P_8_CLUSTER_CIENET = XpkClusterConfig(
-      name="cienet-v5p-8-2",
-      device_version=TpuVersion.V5P,
-      core_count=8,
-      project=Project.CINET_CMS.value,
-      zone=Zone.US_EAST5_A.value,
   )
   TPU_V6E_256_CLUSTER = XpkClusterConfig(
       name="bodaborg-v6e-256",
