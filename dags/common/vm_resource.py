@@ -69,7 +69,7 @@ class Project(enum.Enum):
   TPU_PROD_ENV_LARGE_ADHOC = "tpu-prod-env-large-adhoc"
   TPU_PROD_ENV_ONE_VM = "tpu-prod-env-one-vm"
   TPU_PROD_ENV_LARGE_CONT = "tpu-prod-env-large-cont"
-  CINET_CMS = "cienet-cmcs"
+  CIENET_CMCS="cienet-cmcs"
   CINET_C5 = "cienet-549295"
 
 class ImageProject(enum.Enum):
@@ -250,11 +250,11 @@ class XpkClusters:
       project=Project.CLOUD_TPU_MULTIPOD_DEV.value,
       zone=Zone.EUROPE_WEST4_B.value,
   )
-  TPU_V5P_8_CLUSTER_CUSTOM = XpkClusterConfig(
-      name="camilo-orbax-v5p8",
+  TPU_V5P_8_CLUSTER_CIENET = XpkClusterConfig(
+      name="cienet-v5p-8-2",
       device_version=TpuVersion.V5P,
       core_count=8,
-      project=Project.CINET_CMS.value,
+      project=Project.CIENET_CMCS.value,
       zone=Zone.US_EAST5_A.value,
   )
   TPU_V5E_256_CLUSTER = XpkClusterConfig(
