@@ -37,11 +37,11 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.BASE_OUTPUT_DIR_TEST}/maxtext_multi_tier_checkpointing_phase2"
+      f"{gcs_bucket.CAMILO_BASE_OUTPUT_DIR}/maxtext_multi_tier_checkpointing_phase2"
   )
-  dataset_path = gcs_bucket.BASE_OUTPUT_DIR_TEST
+  dataset_path = gcs_bucket.TRAIN_DATA_C4
   docker_images = [
-      (SetupMode.STABLE,DockerImage.XPK_JAX_TEST_CUSTOM),
+      (SetupMode.STABLE, DockerImage.ORBAX_STABLE_TEMPLATED_RUNNER),
   ]
   test_configs = {
       # accelerator: list of slices to test
@@ -54,14 +54,14 @@ with models.DAG(
       # "v6e-64": XpkClusters.TPU_V6E_64_CLUSTER_CUSTOM,
   }
   params = {
-    "ramdisk": "/local",
-    "steps": 50,
-    "chk_period": 20,
-    "chk_local": 10,
-    "repl_backup_min": 3,
-    "ici_tensor_parall": 1,
-    "use_replicator":True,
-    "model_to_run":'llama2-7b'
+      "ramdisk": "/local",
+      "steps": 50,
+      "chk_period": 20,
+      "chk_local": 10,
+      "repl_backup_min": 3,
+      "ici_tensor_parall": 1,
+      "use_replicator": True,
+      "model_to_run": 'llama2-7b'
   }
 
   for mode, image in docker_images:
@@ -87,19 +87,18 @@ with models.DAG(
             test_owner="Camilo Quinones",
         ).run_with_check_local_ramdisk(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
-      clean_cmd = (f"rm -rf {params['ramdisk']}/*",)
-
-      clean_ramdisk_one = gke_config.get_gke_config(
-            num_slices=2,
+        clean_cmd = (f"rm -rf {params['ramdisk']}/*",)
+        clean_ramdisk_one = gke_config.get_gke_config(
+            num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
             test_name="clean-ramdisk",
             run_model_cmds=clean_cmd,
             docker_image=image.value,
             test_owner="Camilo Quinones",
-      ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
-      (
-        maxtext_v5p8_save_checkpoint
-        >> clean_ramdisk_one
-      )
+        (
+          maxtext_v5p8_save_checkpoint
+          >> clean_ramdisk_one
+        )

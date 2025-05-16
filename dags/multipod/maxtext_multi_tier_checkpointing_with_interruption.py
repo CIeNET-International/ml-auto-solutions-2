@@ -37,21 +37,19 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.BASE_OUTPUT_DIR_TEST}/maxtext_multi_tier_checkpointing_phase2"
+      f"{gcs_bucket.BASE_OUTPUT_DIR}/maxtext_multi_tier_checkpointing_phase2"
   )
-  dataset_path = gcs_bucket.BASE_OUTPUT_DIR_TEST
+  dataset_path = gcs_bucket.TRAIN_DATA_C4
   docker_images = [
-      (SetupMode.STABLE,DockerImage.XPK_JAX_TEST_CUSTOM),
+      (SetupMode.STABLE, DockerImage.ORBAX_STABLE_TEMPLATED_RUNNER),
   ]
   test_configs = {
       # accelerator: list of slices to test
-      "v5litepod-64": [4],
-      # "v6e-64":[2],
+      "v5p-8": [2],
   }
   clusters = {
       # accelerator: cluster name
-      "v5litepod-64": XpkClusters.TPU_V5E_64_CLUSTER_CIENET ,
-      # "v6e-64": XpkClusters.TPU_V6E_64_CLUSTER_CUSTOM,
+      "v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_CIENET,
   }
   params = {
     "ramdisk": "/local",
@@ -63,9 +61,6 @@ with models.DAG(
     "use_replicator":True,
     "model_to_run":'llama2-7b'
   }
-
-  # Fix for RAMDISK XPK Comand
-  params["ramdisk_xpk"] = params['ramdisk'].split("/")[1]
 
   for mode, image in docker_images:
     for accelerator, slices in test_configs.items():
@@ -90,19 +85,18 @@ with models.DAG(
             test_owner="Camilo Quinones",
         ).run_with_interruption(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
-      clean_cmd = (f"rm -rf {params['ramdisk']}/*",)
+        clean_cmd = (f"rm -rf {params['ramdisk']}/*",)
+        clean_ramdisk_one = gke_config.get_gke_config(
+              num_slices=slice_num,
+              cluster=clusters[accelerator],
+              time_out_in_min=60,
+              test_name="clean-ramdisk",
+              run_model_cmds=clean_cmd,
+              docker_image=image.value,
+              test_owner="Camilo Quinones",
+        ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
-      clean_ramdisk_one = gke_config.get_gke_config(
-            num_slices=2,
-            cluster=clusters[accelerator],
-            time_out_in_min=60,
-            test_name="clean-ramdisk",
-            run_model_cmds=clean_cmd,
-            docker_image=image.value,
-            test_owner="Camilo Quinones",
-      ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
-
-      (
-        maxtext_v5p8_save_checkpoint
-        >> clean_ramdisk_one
-      )
+        (
+          maxtext_v5p8_save_checkpoint
+          >> clean_ramdisk_one
+        )

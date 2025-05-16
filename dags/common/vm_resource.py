@@ -326,8 +326,9 @@ class XpkClusters:
 class DockerImage(enum.Enum):
   """Common docker images."""
   XPK_JAX_TEST = "gcr.io/cloud-ml-auto-solutions/xpk_jax_test:latest"
-  XPK_JAX_TEST_CUSTOM = "gcr.io/cienet-cmcs/camiloquinones-runner:ekyk-2025-05-12-08-08-34"
-  XPK_JAX_TEMPLATED_TEST = "gcr.io/cienet-cmcs/severus-runner:latest"
+  ORBAX_STABLE_TEMPLATED_RUNNER = "gcr.io/cienet-cmcs/severus-runner:latest"
+  ORBAX_STABLE_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
+  ORBAX_LATEST_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-latest-pure-runner:latest"
   PYTORCH_NIGHTLY = (
       "us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/"
       f"xla:nightly_3.10_tpuvm_{datetime.datetime.today().strftime('%Y%m%d')}"

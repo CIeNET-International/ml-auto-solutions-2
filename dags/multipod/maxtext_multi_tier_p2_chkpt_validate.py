@@ -25,7 +25,7 @@ with models.DAG(
   )
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
   docker_images = [
-      (SetupMode.JAX_STABLE_STACK, DockerImage.XPK_JAX_TEST_CUSTOM)
+      (SetupMode.JAX_STABLE_STACK, DockerImage.ORBAX_STABLE_PURE_RUNNER)
   ]
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
@@ -46,34 +46,34 @@ with models.DAG(
             "reuse_example_batch=1 enable_emergency_checkpoint=true "
             f"local_checkpoint_directory={ram_disk} local_checkpoint_period=100 "
             "use_replicator_service=True replicator_backup_interval_minutes=5 "
-            f"run_name={run_name} dataset_path={dataset_path}" ,
+            f"run_name={run_name} dataset_path={dataset_path}",
         )
 
         # make launch test_name unique
         maxtext_phase2_chkpt_test = gke_config.get_gke_config(
-          num_slices=slice_num,
-          cluster=clusters[accelerator],
-          time_out_in_min=60,
-          test_name=f"maxtext_phase2_chkpt_test",
-          run_model_cmds=workload_command,
-          docker_image=image.value,
-          test_owner=test_owner.JACKY_F,
+            num_slices=slice_num,
+            cluster=clusters[accelerator],
+            time_out_in_min=60,
+            test_name=f"maxtext_phase2_chkpt_test",
+            run_model_cmds=workload_command,
+            docker_image=image.value,
+            test_owner=test_owner.JACKY_F,
         ).run_with_interruption_and_validation(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", gcs_location=base_output_directory, skip_post_process=True)
 
         # cleanup run: unique test_name
         cleanup_command = (f"rm -rf {ram_disk}/*",)
         ram_disk_cleanup = gke_config.get_gke_config(
-          num_slices=slice_num,
-          cluster=clusters[accelerator],
-          time_out_in_min=60,
-          test_name=f"maxtext_phase2_chkpt_test-cleanup",
-          run_model_cmds=cleanup_command,
-          docker_image=image.value,
-          test_owner=test_owner.JACKY_F,
+            num_slices=slice_num,
+            cluster=clusters[accelerator],
+            time_out_in_min=60,
+            test_name=f"maxtext_phase2_chkpt_test-cleanup",
+            run_model_cmds=cleanup_command,
+            docker_image=image.value,
+            test_owner=test_owner.JACKY_F,
         ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
 
         (
-          maxtext_phase2_chkpt_test
-          >> ram_disk_cleanup
+            maxtext_phase2_chkpt_test
+            >> ram_disk_cleanup
         )
 

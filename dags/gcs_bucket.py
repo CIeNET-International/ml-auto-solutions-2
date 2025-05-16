@@ -21,7 +21,6 @@ TFDS_DATA_DIR = "gs://ml-auto-solutions/data/tfds-data"
 MAXTEXT_DIR = "gs://max-datasets-rogue"
 AXLEARN_DIR = "gs://axlearn-public/tensorflow_datasets"
 MLPERF_LLM_DIR = "gs://mlperf-llm-public2"
-# TRAIN_DATA_C4 = "gs://camilo-bucket-orbax"
 TRAIN_DATA_C4 = "gs://severus-maxtext-c4-dataset"
 
 # GCS bucket for output
@@ -29,8 +28,6 @@ TRAIN_DATA_C4 = "gs://severus-maxtext-c4-dataset"
 # For further question reach out to  Multi-tier Checkpointing Owners.
 MTC_BUCKET = "gs://mtc-bucket-us-east5/output"
 CIENET_MTC_BUCKET = "gs://cienet-mtc-bucket/output"
-# BASE_OUTPUT_DIR = "gs://ml-auto-solutions/output"
-BASE_OUTPUT_DIR = "gs://severus-maxtext-c4-dataset/output_airflow"
-
-# Test camilo DELETE LATER
-BASE_OUTPUT_DIR_TEST = "gs://camilo-bucket-orbax"
+BASE_OUTPUT_DIR = "gs://ml-auto-solutions/output"
+SEVERUS_BASE_OUTPUT_DIR = "gs://severus-maxtext-c4-dataset/output_airflow"
+CAMILO_BASE_OUTPUT_DIR = "gs://camilo-bucket-orbax"
