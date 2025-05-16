@@ -260,12 +260,12 @@ class XpkTask(BaseTask):
     """
     with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
       run_model, gcs_path = self.run_model_check_local_ramdisk(
-        gcs_location,
-        use_vertex_tensorboard,
-        use_pathways,
-        ramdisk_directory,
-        mtc_enabled,
-        xpk_branch,
+          gcs_location,
+          use_vertex_tensorboard,
+          use_pathways,
+          ramdisk_directory,
+          mtc_enabled,
+          xpk_branch,
       )
       if not skip_post_process:
         run_model >> self.post_process(gcs_path)
@@ -470,7 +470,7 @@ class XpkTask(BaseTask):
       # Wait for a fixed time before deleting a workload pod (simulate interruption)
       sleep_time = 900
 
-      delay_delte_pod = multitier_checkpoint.simple_sleep(
+      delay_delta_pod = multitier_checkpoint.simple_sleep(
           sleep_seconds=sleep_time,
       )
 
@@ -488,9 +488,9 @@ class XpkTask(BaseTask):
       # )
       (
           launch_workload
-          >> [wait_for_workload_completion, delay_delte_pod]
+          >> [wait_for_workload_completion, delay_delta_pod]
       )
-      delay_delte_pod >> delete_one_workload_pod
+      delay_delta_pod >> delete_one_workload_pod
       # wait_for_workload_completion >> clean_up_workload
 
       return group, gcs_path
@@ -549,10 +549,10 @@ class XpkTask(BaseTask):
           cluster_name=self.task_test_config.cluster_name,
       )
       (
-        (workload_id, gcs_path)
-        >> launch_workload
-        >> wait_for_workload_completion
-        >> clean_up_workload
+          (workload_id, gcs_path)
+          >> launch_workload
+          >> wait_for_workload_completion
+          >> clean_up_workload
       )
     return group, gcs_path
 
@@ -672,7 +672,6 @@ class XpkTask(BaseTask):
   ) -> DAGNode:
     """Create the workload and wait for it to provision."""
     with TaskGroup(group_id="launch_workload_with_interruption") as group:
-
       run_workload = xpk.run_workload.override(
           owner=self.task_test_config.task_owner
       )(
@@ -718,11 +717,11 @@ class XpkTask(BaseTask):
           workload_id=workload_id,
       )
       waiting_workload_resume = xpk.wait_for_workload_resume(
-        task_id = "wait_for_all_pods_running",
-        project_id=self.task_gcp_config.project_name,
-        region=self.task_gcp_config.zone[:-2],
-        cluster_name=self.task_test_config.cluster_name,
-        workload_id=workload_id,
+          task_id = "wait_for_all_pods_running",
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+          workload_id=workload_id,
       )
       check_local_ramdisk_2 = xpk.check_local_ramdisk(
           workload_id=workload_id,
@@ -807,7 +806,6 @@ class XpkTask(BaseTask):
   ) -> DAGNode:
     """Create the workload and wait for it to provision."""
     with TaskGroup(group_id="launch_workload_with_interruption") as group:
-
       run_workload = xpk.run_workload.override(
           owner=self.task_test_config.task_owner
       )(

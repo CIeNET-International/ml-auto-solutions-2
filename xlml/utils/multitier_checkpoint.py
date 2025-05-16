@@ -11,6 +11,7 @@ from typing import Union, List
 import re
 import random
 
+
 def _get_core_api_client(
     project: str, region: str, cluster_name: str
 ) -> k8s_client.CoreV1Api:
@@ -33,6 +34,7 @@ def _list_workload_pods(
       namespace="default",
   )
   return pods
+
 
 def _list_multitier_pods(core_api: k8s_client.CoreV1Api) -> k8s_client.V1PodList:
   """
@@ -64,39 +66,41 @@ def _list_multitier_pods(core_api: k8s_client.CoreV1Api) -> k8s_client.V1PodList
     logging.info(f"Pod {i}: {pod.metadata.name}")
   return pods
 
+
 def _execute_command_in_pod(
-  core_api: k8s_client.CoreV1Api,
-  pod: k8s_client.V1Pod,
-  command: Union[str, List[str]],
-  container: str = None,  # optional container name
+    core_api: k8s_client.CoreV1Api,
+    pod: k8s_client.V1Pod,
+    command: Union[str, List[str]],
+    container: str = None,  # optional container name
 ) -> str:
   """Execute a command in the given pod using stream for an upgradeable connection."""
   logging.info(f"Executing command in pod {pod.metadata.name}: {command}")
   try:
     cmd = command if isinstance(command, list) else command.split()
     response = stream(
-      core_api.connect_get_namespaced_pod_exec,
-      name=pod.metadata.name,
-      namespace=pod.metadata.namespace,
-      command=cmd,
-      container=container,
-      stderr=True,
-      stdin=False,
-      stdout=True,
-      tty=False,
+        core_api.connect_get_namespaced_pod_exec,
+        name=pod.metadata.name,
+        namespace=pod.metadata.namespace,
+        command=cmd,
+        container=container,
+        stderr=True,
+        stdin=False,
+        stdout=True,
+        tty=False,
     )
     return response
   except k8s_client.rest.ApiException as e:
     logging.error(f"Error executing command in pod {pod.metadata.name}: {e}")
     raise
 
+
 @task.sensor(poke_interval=900, mode="reschedule")
 def delete_one_workload_pod(
-  project: str,
-  region: str,
-  cluster_name: str,
-  workload_id: str,
-  namespace: str = "default",
+    project: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    namespace: str = "default",
 ) -> bool:
   """
   Delete one pod associated with the given workload_id and return True if it is deleted or completed.
@@ -148,13 +152,13 @@ def delete_one_workload_pod(
 
 @task
 def prepare_verification_targets(
-  project: str,
-  region: str,
-  cluster_name: str,
-  workload_id: str,
-  workload_namespace: str,
-  driver_namespace: str,
-  driver_label_selector: str,
+    project: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    workload_namespace: str,
+    driver_namespace: str,
+    driver_label_selector: str,
 ) -> dict:
   """
   Prepare verification targets for RAM disk checkpoint verification.
@@ -240,16 +244,17 @@ def prepare_verification_targets(
     "driver_pod_namespace": driver_pod.metadata.namespace,
   }
 
+
 @task
 def verify_checkpoint_files(
-  verification_targets: dict,
-  ramdisk_directory: str,
-  driver_container_name: str,
-  workload_id: str,
-  project: str,
-  region: str,
-  cluster_name: str,
-  expected_steps: List[int]
+    verification_targets: dict,
+    ramdisk_directory: str,
+    driver_container_name: str,
+    workload_id: str,
+    project: str,
+    region: str,
+    cluster_name: str,
+    expected_steps: List[int]
 ) -> bool:
   """
   Verify the existence of checkpoint files in the specified RAM disk directory and check
@@ -333,17 +338,18 @@ def verify_checkpoint_files(
       f"Expected file matching pattern with expected step (s<number>) not found in RAM disk directory '{ramdisk_directory}'"
     )
 
+
 def verify_last_workload_pod_ramdisk_checkpoint(
-  project: str,
-  region: str,
-  cluster_name: str,
-  workload_id: str,
-  expected_steps: List[int],  # Expected step numbers passed externally
-  workload_namespace: str = "default",  # Namespace of the training workload pods
-  ramdisk_directory: str = "",            # RAM disk directory path inside the CSI driver container
-  driver_namespace: str = "gke-managed-checkpointing",  # Namespace where CSI driver pods run
-  driver_label_selector: str = "k8s-app=high-scale-checkpointing",  # Label selector for CSI driver pods
-  driver_container_name: str = "csi",     # Container name within the driver pod for command execution
+    project: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    expected_steps: List[int],  # Expected step numbers passed externally
+    workload_namespace: str = "default",  # Namespace of the training workload pods
+    ramdisk_directory: str = "",  # RAM disk directory path inside the CSI driver container
+    driver_namespace: str = "gke-managed-checkpointing",  # Namespace where CSI driver pods run
+    driver_label_selector: str = "k8s-app=high-scale-checkpointing",  # Label selector for CSI driver pods
+    driver_container_name: str = "csi",  # Container name within the driver pod for command execution
 ) -> TaskGroup:
   """
   Orchestrate RAM disk checkpoint verification for the last workload pod using a TaskGroup.
@@ -388,9 +394,10 @@ def verify_last_workload_pod_ramdisk_checkpoint(
 
   return group
 
+
 @task
 def simple_sleep(sleep_seconds: int):
-    """
+  """
     A simple task that pauses execution for a specified number of seconds
     using time.sleep().
 
@@ -400,11 +407,11 @@ def simple_sleep(sleep_seconds: int):
     Args:
         sleep_seconds: The number of seconds the task should sleep.
     """
-    if sleep_seconds < 0:
-        logging.warning(f"Requested sleep time is negative: {sleep_seconds}. Skipping sleep.")
-        return # Or raise an error, depending on desired behavior
-    logging.info(f"Simple Sleep Task: Starting sleep for {sleep_seconds} seconds.")
-    # --- The sleep happens here ---
-    time.sleep(sleep_seconds)
-    # -----------------------------
-    logging.info(f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds.")
+  if sleep_seconds < 0:
+    logging.warning(f"Requested sleep time is negative: {sleep_seconds}. Skipping sleep.")
+    return  # Or raise an error, depending on desired behavior
+  logging.info(f"Simple Sleep Task: Starting sleep for {sleep_seconds} seconds.")
+  # --- The sleep happens here ---
+  time.sleep(sleep_seconds)
+  # -----------------------------
+  logging.info(f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds.")

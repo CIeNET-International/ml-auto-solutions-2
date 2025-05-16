@@ -68,7 +68,7 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         command = (
-            "bash end_to_end/save_mtc/test_mtc_phase_2_save_path.sh"
+            "bash end_to_end/test_mtc_phase_2_save_path.sh"
             f" multitiercheckpointing-{slice_num}x-{accelerator}"
             f" {base_output_directory} {dataset_path}"
             f" {params['ramdisk']} {params['steps']} "
@@ -99,6 +99,6 @@ with models.DAG(
         ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
         (
-          maxtext_v5p8_save_checkpoint
-          >> clean_ramdisk_one
+            maxtext_v5p8_save_checkpoint
+            >> clean_ramdisk_one
         )
