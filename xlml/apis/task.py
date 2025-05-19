@@ -199,6 +199,7 @@ class XpkTask(BaseTask):
       )
       if not skip_post_process:
         run_model >> self.post_process(gcs_path)
+
     return group
 
   def run_with_interruption(
@@ -225,12 +226,12 @@ class XpkTask(BaseTask):
     """
     with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
       run_model, gcs_path = self.run_model_with_interruption(
-        gcs_location,
-        use_vertex_tensorboard,
-        use_pathways,
-        ramdisk_directory,
-        mtc_enabled,
-        xpk_branch,
+          gcs_location,
+          use_vertex_tensorboard,
+          use_pathways,
+          ramdisk_directory,
+          mtc_enabled,
+          xpk_branch,
       )
       if not skip_post_process:
         run_model >> self.post_process(gcs_path)
@@ -548,14 +549,14 @@ class XpkTask(BaseTask):
           zone=self.task_gcp_config.zone,
           cluster_name=self.task_test_config.cluster_name,
       )
+
       (
           (workload_id, gcs_path)
           >> launch_workload
           >> wait_for_workload_completion
           >> clean_up_workload
       )
-    return group, gcs_path
-
+      return group, gcs_path
 
   def run_model_with_interruption(
       self,
@@ -586,15 +587,19 @@ class XpkTask(BaseTask):
             self.task_test_config.gcs_subfolder,
             self.task_test_config.benchmark_id,
         )
-      launch_workload_with_interruption = self.launch_workload_with_interruption(
-          workload_id,
-          gcs_path,
-          use_vertex_tensorboard,
-          use_pathways,
-          ramdisk_directory,
-          mtc_enabled,
-          xpk_branch,
+
+      launch_workload_with_interruption = (
+          self.launch_workload_with_interruption(
+              workload_id,
+              gcs_path,
+              use_vertex_tensorboard,
+              use_pathways,
+              ramdisk_directory,
+              mtc_enabled,
+              xpk_branch,
+          )
       )
+
       wait_for_workload_completion = xpk.wait_for_workload_completion.override(
           timeout=int(self.task_test_config.timeout.total_seconds()),
       )(
@@ -603,17 +608,19 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
       )
+
       clean_up_workload = xpk.clean_up_workload(
           workload_id=workload_id,
           project_id=self.task_gcp_config.project_name,
           zone=self.task_gcp_config.zone,
           cluster_name=self.task_test_config.cluster_name,
       )
+
       (
-        (workload_id, gcs_path)
-        >> launch_workload_with_interruption
-        >> wait_for_workload_completion
-        >> clean_up_workload
+          (workload_id, gcs_path)
+          >> launch_workload_with_interruption
+          >> wait_for_workload_completion
+          >> clean_up_workload
       )
     return group, gcs_path
 
@@ -692,6 +699,7 @@ class XpkTask(BaseTask):
           mtc_enabled=mtc_enabled,
           xpk_branch=xpk_branch,
       )
+
       wait_for_workload_start = xpk.wait_for_workload_start.override(
           timeout=self.workload_provision_timeout.total_seconds()
       )(

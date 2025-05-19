@@ -32,7 +32,7 @@ with models.DAG(
         "maxtext",
         "multi_tier_checkpointing_sav02",
     ],
-    start_date=datetime.datetime(2025, 2, 27),
+    start_date=datetime.datetime(2025, 5, 15),
     catchup=False,
     concurrency=2,
 ) as dag:

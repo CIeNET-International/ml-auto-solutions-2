@@ -120,13 +120,17 @@ def run_workload(
         f" --{multi_keyword}={num_slices} --docker-image={docker_image}"
         f" --project={cluster_project} --zone={zone}"
         f" --env {metric_config.SshEnvVars.GCS_OUTPUT.name}={gcs_path}"
-        f" --max-restarts=50"
+        " --restart-on-user-code-failure"
     )
     if ramdisk_directory:
       workload_create_cmd += f" --ramdisk-directory={ramdisk_directory}"
     if mtc_enabled:
       workload_create_cmd += " --mtc-enabled"
+    # For Orbax DAG
     if ramdisk_directory and mtc_enabled:
+      workload_create_cmd = workload_create_cmd.replace(
+          " --restart-on-user-code-failure", ""
+      )
       workload_create_cmd += " --max-restarts=50"
 
     # If using a valid GPU and the XPK branch is set to "main", then branch is switch to "v0.4.1".
@@ -175,6 +179,7 @@ def _list_workload_pods(
       namespace="default",
   )
   return pods
+
 
 def _get_batch_api_client(
     project_id: str, region: str, cluster_name: str

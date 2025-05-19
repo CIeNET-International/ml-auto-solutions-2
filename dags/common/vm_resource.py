@@ -70,7 +70,7 @@ class Project(enum.Enum):
   TPU_PROD_ENV_ONE_VM = "tpu-prod-env-one-vm"
   TPU_PROD_ENV_LARGE_CONT = "tpu-prod-env-large-cont"
   CIENET_CMCS="cienet-cmcs"
-  CINET_C5 = "cienet-549295"
+  CIENET_C5 = "cienet-549295"
 
 class ImageProject(enum.Enum):
   """Common image projects for GPU."""
@@ -292,7 +292,6 @@ class XpkClusters:
       project=Project.TPU_PROD_ENV_ONE_VM.value,
       zone=Zone.US_EAST5_C.value,
   )
-
   GPU_A3_CLUSTER = XpkClusterConfig(
       name="ninacai-maxtext-a3",
       device_version=GpuVersion.XPK_H100,
@@ -369,8 +368,7 @@ class DockerImage(enum.Enum):
       f"{datetime.datetime.today().strftime('%Y-%m-%d')}"
   )
   MAXTEXT_TPU_JAX_NIGHTLY = (
-      "gcr.io/tpu-prod-env-multipod/maxtext_jax_nightly:"
-      f"{datetime.datetime.today().strftime('%Y-%m-%d')}"
+      "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
   )
   MAXTEXT_GPU_JAX_PINNED = (
       "gcr.io/tpu-prod-env-multipod/maxtext_gpu_jax_pinned:"
