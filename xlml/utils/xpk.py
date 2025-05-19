@@ -27,7 +27,7 @@ from xlml.utils import gke
 from dags.common.vm_resource import GpuVersion
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
-MAIN_BRANCH = "main"
+MAIN_BRANCH = "v0.4.1"
 # Duration = past 7 days
 LOGGING_URL_FORMAT = (
     "https://pantheon.corp.google.com/logs/query;"
@@ -116,12 +116,17 @@ def run_workload(
         f" --{multi_keyword}={num_slices} --docker-image={docker_image}"
         f" --project={cluster_project} --zone={zone}"
         f" --env {metric_config.SshEnvVars.GCS_OUTPUT.name}={gcs_path}"
+        " --restart-on-user-code-failure"
     )
     if ramdisk_directory:
       workload_create_cmd += f" --ramdisk-directory={ramdisk_directory}"
     if mtc_enabled:
       workload_create_cmd += " --mtc-enabled"
+    # For Orbax DAG
     if ramdisk_directory and mtc_enabled:
+      workload_create_cmd = workload_create_cmd.replace(
+          " --restart-on-user-code-failure", ""
+      )
       workload_create_cmd += " --max-restarts=50"
 
     # If using a valid GPU and the XPK branch is set to "main", then branch is switch to "v0.4.1".
@@ -312,23 +317,22 @@ def run_interruption_cmd(
         raise RuntimeError(f"Bad pod phase: {pod.status.phase}")
   finally:
     if all(pod.status.phase in ["Running"] for pod in pods.items):
-
       # Pick last one running pod
       pod = pods.items[len(pods.items) - 1]
       logs = core_api.read_namespaced_pod_log(
-        name=pod.metadata.name, namespace=pod.metadata.namespace
+          name=pod.metadata.name, namespace=pod.metadata.namespace
       )
       logging.info(f"Logs for pod {pod.metadata.name}:")
       for line in logs.split("\n"):
         logging.info(line)
 
-      #TODO --> More sophisticated way to know when the pod start training.
+      # TODO --> More sophisticated way to know when the pod start training.
       if "completed step:" in logs:
         # Here where regex expresion to kill pod will go. First test with killing the  pod
         result = core_api.delete_namespaced_pod(
-          name=pod.metadata.name, namespace=pod.metadata.namespace
+            name=pod.metadata.name, namespace=pod.metadata.namespace
         )
-        logging.info("The {pod.metadata.name} pod was sucessfully deleted.")
+        logging.info("The {pod.metadata.name} pod was successfully deleted.")
         return True
   return False
 

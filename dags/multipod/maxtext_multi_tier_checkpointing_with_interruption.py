@@ -42,7 +42,7 @@ with models.DAG(
   )
   dataset_path = gcs_bucket.MTC_BUCKET
   docker_images = [
-      (SetupMode.STABLE,DockerImage.MAXTEXT_TPU_JAX_NIGHTLY),
+      (SetupMode.STABLE, DockerImage.MAXTEXT_TPU_JAX_NIGHTLY),
   ]
   test_configs = {
       # accelerator: list of slices to test
@@ -69,10 +69,15 @@ with models.DAG(
             run_model_cmds=command,
             docker_image=image.value,
             test_owner=test_owner.JACKY_F,
-        ).run_with_interruption(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run_with_interruption(
+            ramdisk_directory="local",
+            xpk_branch="main",
+            skip_post_process=True,
+            mtc_enabled=True,
+        )
 
-      clean_cmd = (f"rm -rf /local/*",)
-      clean_ramdisk_one = gke_config.get_gke_config(
+        clean_cmd = (f"rm -rf /local/*",)
+        clean_ramdisk_one = gke_config.get_gke_config(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
@@ -80,9 +85,11 @@ with models.DAG(
             run_model_cmds=clean_cmd,
             docker_image=image.value,
             test_owner=test_owner.JACKY_F,
-      ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run(
+            ramdisk_directory="local",
+            xpk_branch="main",
+            skip_post_process=True,
+            mtc_enabled=True,
+        )
 
-      (
-          maxtext_save_checkpoint
-          >> clean_ramdisk_one
-      )
+        (maxtext_save_checkpoint >> clean_ramdisk_one)
