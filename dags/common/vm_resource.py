@@ -69,7 +69,7 @@ class Project(enum.Enum):
   TPU_PROD_ENV_LARGE_ADHOC = "tpu-prod-env-large-adhoc"
   TPU_PROD_ENV_ONE_VM = "tpu-prod-env-one-vm"
   TPU_PROD_ENV_LARGE_CONT = "tpu-prod-env-large-cont"
-  CIENET_CMCS="cienet-cmcs"
+  CIENET_CMCS = "cienet-cmcs"
   CIENET_C5 = "cienet-549295"
 
 class ImageProject(enum.Enum):
