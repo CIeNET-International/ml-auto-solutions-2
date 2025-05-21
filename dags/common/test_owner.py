@@ -55,6 +55,7 @@ YUWEI_Y = "Yuwei Y."
 ABHINAV_S = "ABHINAV S."
 XUEFENG_G = "XUEFENG G."
 JACKY_F = "JACKY F."
+ERNIE_C = "ERNIE C."
 
 # MLCompass
 ORTI_B = "Orti B."
