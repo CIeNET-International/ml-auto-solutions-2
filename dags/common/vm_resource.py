@@ -257,6 +257,13 @@ class XpkClusters:
       project=Project.CIENET_CMCS.value,
       zone=Zone.US_EAST5_A.value,
   )
+  TPU_V5P_8_CLUSTER_ERNIE_CIENET = XpkClusterConfig(
+      name="ernie-cienet-v5p-8",
+      device_version=TpuVersion.V5P,
+      core_count=8,
+      project=Project.CIENET_CMCS.value,
+      zone=Zone.US_EAST5_A.value,
+  )
   TPU_V5E_256_CLUSTER = XpkClusterConfig(
       name="v5e-256-bodaborg-europe-west4",
       device_version=TpuVersion.V5E,

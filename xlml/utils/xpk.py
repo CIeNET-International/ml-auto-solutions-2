@@ -27,6 +27,8 @@ from xlml.utils import gke
 from dags.common.vm_resource import GpuVersion
 from kubernetes.stream import stream
 import time
+from airflow.providers.google.cloud.operators.gcs import GCSHook
+import re
 
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
@@ -180,6 +182,14 @@ def _list_workload_pods(
   )
   return pods
 
+def _get_pods(
+    core_api: k8s_client.CoreV1Api, namespace: str, 
+) -> k8s_client.V1PodList:
+  """List all pods for the given namespace."""
+  pods = core_api.list_namespaced_pod(
+      namespace=namespace,
+  )
+  return pods
 
 def _get_batch_api_client(
     project_id: str, region: str, cluster_name: str
@@ -276,7 +286,57 @@ def check_local_ramdisk(
           if file.endswith(".data"):
             return True
 
+@task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
+def check_local_ramdisk_p2(
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    ramdisk_dir: str,
+    sleep_time: int,
+) -> bool:
+  """Check locally in the working pod while executing the ramdisk to see if follow HASH format"""
 
+  # Need time sleep so it can let the pods to recover after injecting failure
+  time.sleep(sleep_time)
+
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods = _list_workload_pods(core_api, workload_id)
+
+  if any(pod.status.phase in ["Pending"] for pod in pods.items):
+    logging.info("Some of the pods is still pending. Waiting to start")
+    return False
+
+  cmd = ["bash", "-c", f"ls /{ramdisk_dir}"]
+  for pod in pods.items:
+    # Need to be imporved so it can compare steps with csid driver
+    if pod.status.phase == "Running":
+      response = _execute_command_in_pod(core_api=core_api, pod=pod, command=cmd)
+      files = response.strip().split("\n")
+      logging.info("Files ===> ", files)
+      if len(files) > 0:
+        return True
+
+@task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
+def run_kill_process_cmd(
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+) -> bool:
+
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods = _list_workload_pods(core_api, workload_id)
+
+  if any(pod.status.phase in ["Pending"] for pod in pods.items):
+    logging.info("Some of the pods is still pending. Waiting to start")
+    return False
+  cmd = ["kill", "-9", "ps aux | awk -v exec_name=\"python3\" '$11 == exec_name {{print $0}}' | grep \" -m MaxText.train\" | grep -v grep | awk '{{print $2}}' | head -n 1"]
+  for pod in pods.items:
+    if pod.status.phase == "Running":
+      response = _execute_command_in_pod(core_api=core_api, pod=pod, command=cmd)
+      logging.info(response)
+      
 @task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
 def run_interruption_cmd(
     task_id: str,
@@ -449,3 +509,35 @@ def clean_up_workload(
     assert (
         result.exit_code == 0
     ), f"XPK clean-up failed with code {result.exit_code}"
+
+@task
+def validate_saving_checkpoint(output_path):
+  hook = GCSHook()
+  pattern = re.compile(r"^gs://(?P<bucket>[^/]+)/(?P<prefix>.+)$")
+  m = pattern.match(output_path)
+  bucket_name = m.group("bucket")
+  prefix = m.group("prefix")
+  logging.info(f"output_path:{output_path}")
+  logging.info(f"bucket:{bucket_name}")
+  logging.info(f"prefix:{prefix}")
+  objects = hook.list(bucket_name=bucket_name, prefix=prefix)
+  if not objects or len(objects) <= 0:
+    raise AirflowFailException()
+
+@task
+def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods = _get_pods(core_api, 'gke-managed-checkpointing')
+  if any(pod.status.phase in ["Pending"] for pod in pods.items):
+    logging.info("Some of the pods is still pending. Waiting to start")
+    return False
+
+  cmd = ["bash", "-c", f"ls /local/tmpfs/client/"]
+  for pod in pods.items:
+    # Need to be imporved so it can compare steps with csid driver
+    if pod.status.phase == "Running" and "multitier-driver" in pod.metadata.name:
+      response = _execute_command_in_pod(core_api=core_api, pod=pod, command=cmd, container='csi')
+      files = response.strip().split("\n")
+      logging.info("Files ===> ", files)
+      if len(files) > 0:
+        return True
