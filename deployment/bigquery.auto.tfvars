@@ -1,4 +1,4 @@
-# Suggested to add prefix in front of each id
+# Suggested to add prefix in front of each id, ex: severus_benchmark_dataset
 bigquery_datasets = [
   {
     id        = "benchmark_dataset"
@@ -21,7 +21,7 @@ bigquery_datasets = [
     env_stage = "dev"
   }
 ]
-# Suggested to add prefix in front of each id
+# Suggested to add prefix in front of each dataset_id
 bigquery_tables = [
   {
     dataset_id     = "benchmark_dataset"
