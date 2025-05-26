@@ -165,6 +165,10 @@ class XpkTask(BaseTask):
   workload_provision_timeout: datetime.timedelta = datetime.timedelta(
       minutes=300
   )
+  interruption_timeout: datetime.timedelta = datetime.timedelta(
+      minutes=1
+  )
+
 
   def run(
       self,
@@ -226,6 +230,41 @@ class XpkTask(BaseTask):
     """
     with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
       run_model, gcs_path = self.run_model_with_interruption(
+          gcs_location,
+          use_vertex_tensorboard,
+          use_pathways,
+          ramdisk_directory,
+          mtc_enabled,
+          xpk_branch,
+      )
+      if not skip_post_process:
+        run_model >> self.post_process(gcs_path)
+    return group
+
+  def run_check_restore(
+      self,
+      *,
+      gcs_location: Optional[airflow.XComArg] = None,
+      use_vertex_tensorboard: bool = False,
+      use_pathways: bool = False,
+      skip_post_process: bool = False,
+      ramdisk_directory: str = "",
+      mtc_enabled: bool = False,
+      xpk_branch: str = xpk.MAIN_BRANCH,
+  ) -> DAGNode:
+    """ Run a test with checking is restoring from the bucket
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A task group with the following tasks chained: run_model and
+      post_process.
+    """
+    with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
+      run_model, gcs_path = self.run_model_restore_validation(
           gcs_location,
           use_vertex_tensorboard,
           use_pathways,
@@ -496,6 +535,68 @@ class XpkTask(BaseTask):
 
       return group, gcs_path
 
+  def run_model_restore_validation(
+      self,
+      gcs_location: Optional[airflow.XComArg] = None,
+      use_vertex_tensorboard: bool = False,
+      use_pathways: bool = False,
+      ramdisk_directory: str = "",
+      mtc_enabled: bool = False,
+      xpk_branch: str = xpk.MAIN_BRANCH,
+  ) -> DAGNode:
+    """Run the TPU/GPU test in `task_test_config` using xpk.
+      Different behaviour for testing interruption.
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A DAG node that executes the model test.
+    """
+    with TaskGroup(group_id="run_model") as group:
+      workload_id = xpk.generate_workload_id(self.task_test_config.benchmark_id)
+      if gcs_location:
+        gcs_path = gcs_location
+      else:
+        gcs_path = name_format.generate_gcs_folder_location(
+            self.task_test_config.gcs_subfolder,
+            self.task_test_config.benchmark_id,
+        )
+      launch_workload = self.launch_workload_with_restore_validation(
+          workload_id,
+          gcs_path,
+          use_vertex_tensorboard,
+          use_pathways,
+          ramdisk_directory,
+          mtc_enabled,
+          xpk_branch,
+      )
+      wait_for_workload_completion = xpk.wait_for_workload_completion.override(
+          timeout=int(self.task_test_config.timeout.total_seconds()),
+      )(
+          workload_id=workload_id,
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+      )
+      clean_up_workload = xpk.clean_up_workload(
+          workload_id=workload_id,
+          project_id=self.task_gcp_config.project_name,
+          zone=self.task_gcp_config.zone,
+          cluster_name=self.task_test_config.cluster_name,
+      )
+
+      (
+          (workload_id, gcs_path)
+          >> launch_workload
+          >> wait_for_workload_completion
+          >> clean_up_workload
+      )
+
+    return group,gcs_path
+
   def run_model_check_local_ramdisk(
       self,
       gcs_location: Optional[airflow.XComArg] = None,
@@ -566,6 +667,7 @@ class XpkTask(BaseTask):
       ramdisk_directory: str = "",
       mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
+      step_interrupt: str = None
   ) -> DAGNode:
     """Run the TPU/GPU test in `task_test_config` using xpk.
       Different behaviour for testing interruption.
@@ -597,6 +699,7 @@ class XpkTask(BaseTask):
               ramdisk_directory,
               mtc_enabled,
               xpk_branch,
+              step_interrupt,
           )
       )
 
@@ -801,7 +904,65 @@ class XpkTask(BaseTask):
       verification_targets >> verify_checkpoint_file
 
     return group
-  
+
+  def launch_workload_with_restore_validation(
+      self,
+      workload_id: str,
+      gcs_path: str,
+      use_vertex_tensorboard: bool,
+      use_pathways: bool = False,
+      ramdisk_directory: str = "",
+      mtc_enabled: bool = False,
+      xpk_branch: str = xpk.MAIN_BRANCH,
+  ) -> DAGNode:
+    """
+    Create a workload then first interrupt the workload pod,
+    validate the EMC is restoring from the GCS Bucket
+    """
+    with TaskGroup(group_id="launch_workload_with_interruption_and_restore_validation") as group:
+      run_workload = xpk.run_workload.override(
+          owner=self.task_test_config.task_owner
+      )(
+          task_id="run_workload_with_restore",
+          cluster_project=self.task_gcp_config.project_name,
+          zone=self.task_gcp_config.zone,
+          cluster_name=self.task_test_config.cluster_name,
+          benchmark_id=self.task_test_config.benchmark_id,
+          workload_id=workload_id,
+          gcs_path=gcs_path,
+          docker_image=self.task_test_config.docker_image,
+          accelerator_type=self.task_test_config.accelerator.name,
+          run_cmds=self.task_test_config.test_script,
+          num_slices=self.task_test_config.num_slices,
+          use_vertex_tensorboard=use_vertex_tensorboard,
+          use_pathways=use_pathways,
+          ramdisk_directory=ramdisk_directory,
+          mtc_enabled=mtc_enabled,
+          xpk_branch=xpk_branch,
+      )
+      wait_for_workload_start = xpk.wait_for_workload_start.override(
+          timeout=self.workload_provision_timeout.total_seconds()
+      )(
+          workload_id=workload_id,
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+      )
+      run_restore_validation = xpk.check_restoring_from_gcs_or_local.override(
+          owner=self.task_test_config.task_owner
+      )(
+          task_id="run_restore_validation",
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+          workload_id=workload_id,
+          ramdisk_dir=ramdisk_directory,
+      )
+
+      run_workload >> wait_for_workload_start >> run_restore_validation
+      return group
+
+
   def launch_workload_with_interruption(
       self,
       workload_id: str,
@@ -811,6 +972,7 @@ class XpkTask(BaseTask):
       ramdisk_directory: str = "",
       mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
+      step_interrupt: str = None
   ) -> DAGNode:
     """Create the workload and wait for it to provision."""
     with TaskGroup(group_id="launch_workload_with_interruption") as group:
@@ -850,6 +1012,7 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
           workload_id=workload_id,
+          step_interrupt=step_interrupt
       )
 
       run_workload >> wait_for_workload_start >> run_interruption_workload

@@ -271,6 +271,15 @@ class XpkClusters:
       project=Project.CIENET_CMCS.value,
       zone=Zone.US_CENTRAL1_A.value,
   )
+
+  TPU_V5E_32_CLUSTER_CIENET = XpkClusterConfig(
+      name="camilo-orbax-v5e16",
+      device_version=TpuVersion.V5E,
+      core_count=32,
+      project=Project.CIENET_CMCS.value,
+      zone=Zone.US_CENTRAL1_A.value,
+  )
+
   TPU_V6E_256_CLUSTER = XpkClusterConfig(
       name="bodaborg-v6e-256",
       device_version=TpuVersion.TRILLIUM,
@@ -328,6 +337,7 @@ class DockerImage(enum.Enum):
   ORBAX_STABLE_TEMPLATED_RUNNER = "gcr.io/cienet-cmcs/severus-runner:latest"
   ORBAX_STABLE_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
   ORBAX_LATEST_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-latest-pure-runner:latest"
+  CAMILO_RUNNER = "gcr.io/cienet-cmcs/camiloquinones-runner:acwq-2025-05-14-08-45-17"
   PYTORCH_NIGHTLY = (
       "us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/"
       f"xla:nightly_3.10_tpuvm_{datetime.datetime.today().strftime('%Y%m%d')}"

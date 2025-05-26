@@ -7,8 +7,7 @@
 #      http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# distributed under the License is distributed on an "AS IS" BASIS, # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
@@ -27,6 +26,8 @@ from xlml.utils import gke
 from dags.common.vm_resource import GpuVersion
 from kubernetes.stream import stream
 import time
+from xlml.utils import parser
+from typing import Optional
 
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
@@ -132,6 +133,7 @@ def run_workload(
           " --restart-on-user-code-failure", ""
       )
       workload_create_cmd += " --max-restarts=50"
+    logging.info("WORKLOAD CMD",workload_create_cmd)
 
     # If using a valid GPU and the XPK branch is set to "main", then branch is switch to "v0.4.1".
     if is_valid_gpu_version(accelerator_type) and xpk_branch == MAIN_BRANCH:
@@ -180,6 +182,16 @@ def _list_workload_pods(
   )
   return pods
 
+def _list_mtc_pods(
+    core_api: k8s_client.CoreV1Api
+) -> k8s_client.V1PodList:
+  """List all pods for thecsi Driver"""
+  logging.info(f"Getting pods from CSI MTC Driver")
+  pods = core_api.list_namespaced_pod(
+      label_selector=f"k8s-app=high-scale-checkpointing",
+      namespace="gke-managed-checkpointing",
+  )
+  return pods
 
 def _get_batch_api_client(
     project_id: str, region: str, cluster_name: str
@@ -243,6 +255,58 @@ def _execute_command_in_pod(
     logging.error(f"Error executing command in pod {pod.metadata.name}: {e}")
     raise
 
+@task.sensor(poke_interval=30, timeout=1200, mode="reschedule")
+def check_restoring_from_gcs_or_local(
+    task_id: str,
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    ramdisk_dir: str,
+) -> bool:
+  """Check the EMC is restoring from Bucket or from local Dir """
+
+  # Just give a little more time for testing only.
+  time.sleep(30)
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  worker_pods = _list_workload_pods(core_api, workload_id)
+  pods_mtc = _list_mtc_pods(core_api)
+  if any(pod.status.phase in ["Pending","Terminating"] for pod in worker_pods.items):
+    logging.info("Some of the pods is still pending. Waiting to start")
+    return False
+  try:
+    if any(pod.status.phase in ["Failed"] for pod in worker_pods.items):
+      raise AirflowFailException(f"Bad pod phase. One of the pods Is in Failed")
+  finally:
+    if all(pod.status.phase in ["Running"] for pod in worker_pods.items) and all(pod_mtc.status.phase in ["Running"] for pod_mtc in pods_mtc.items):
+
+      #Select randomly one pod to check the local ramdisk
+      for i in range(len(worker_pods.items)-1):
+        for j in range(len(pods_mtc.items)-1):
+
+          # Need to make sure that worker pod and mtc pod is on same node
+          logging.info(f"Pods to compare Worker:{worker_pods.items[i].spec.node_name} MTC:{pods_mtc.items[j].spec.node_name}")
+          if worker_pods.items[i].spec.node_name == pods_mtc.items[j].spec.node_name:
+            logs_worker = core_api.read_namespaced_pod_log(
+                name=worker_pods.items[i].metadata.name, namespace=worker_pods.items[i].metadata.namespace
+            )
+            logs_mtc = core_api.read_namespaced_pod_log(
+                name=pods_mtc.items[i].metadata.name, namespace=pods_mtc.items[i].metadata.namespace,
+                container="replication-worker"
+            )
+
+            # Check is restoring from Bucket
+            parser_util = parser.Parser()
+            result = parser_util.get_info_restore(logs_from_worker_pod=logs_worker, logs_from_mtc_pod=logs_mtc)
+            logging.info("Result steps ==========>",result.get('steps',""))
+
+            # If the result contains 'steps' means that worker pod and MTC pod restore step match.
+            if result.get('steps'):
+              return True
+    return False
+
+
+
 
 @task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
 def check_local_ramdisk(
@@ -277,6 +341,7 @@ def check_local_ramdisk(
             return True
 
 
+
 @task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
 def run_interruption_cmd(
     task_id: str,
@@ -284,6 +349,7 @@ def run_interruption_cmd(
     region: str,
     cluster_name: str,
     workload_id: str,
+    step_to_stop: Optional[str]= None,
 ) -> bool:
   """Run command to interrupt pod ."""
   core_api = _get_core_api_client(project_id, region, cluster_name)
@@ -313,7 +379,10 @@ def run_interruption_cmd(
         logging.info(line)
 
       # TODO --> More sophisticated way to know when the pod start training.
-      if "completed step:" in logs:
+      stop_step_str = f"completed step: {step_to_stop}," if step_to_stop  else "completed step:"
+      logging.info(f"Step to Stop ==> {step_to_stop}:")
+      if stop_step_str in logs:
+
         # Here where regex expression to kill pod will go. First test with killing the pod
         result = core_api.delete_namespaced_pod(
             name=pod.metadata.name, namespace=pod.metadata.namespace
@@ -346,6 +415,8 @@ def wait_for_workload_resume(
   core_api = _get_core_api_client(project_id, region, cluster_name)
   pods = _list_workload_pods(core_api, workload_id)
 
+  # Give some time to the pods to fully restart
+  time.sleep(20)
   if any(pod.status.phase in ["Pending", "Terminating"] for pod in pods.items):
     logging.info("Some of the pods is still pending.Or are terminating")
     return False
