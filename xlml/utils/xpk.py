@@ -24,6 +24,7 @@ from airflow.hooks.subprocess import SubprocessHook
 from kubernetes import client as k8s_client
 from xlml.apis import metric_config
 from xlml.utils import gke
+from xlml.utils import parser
 from dags.common.vm_resource import GpuVersion
 from kubernetes.stream import stream
 import time
