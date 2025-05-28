@@ -47,6 +47,13 @@ To create a Google Cloud Storage (GCS) bucket to save Terraform state, run `gclo
 
 Then, update `bucket` name to yours in the `backend "gcs"` block of `provider.tf` file.
 
+## Step 3.5 - Update the variables which are commented. TF files which need to be updated included:
+    1. artifact_registry.tf
+    2. bigquery_auto.tfvars
+    3. cloud_composer.auto.tfvars
+    4. clusters.tf (Delete all code inside this file)
+    5. provider.tf
+
 ## Step 4 - Create Cloud Composer environment
 
 Under this `deployment` directory, run commands below to create a new Cloud Composer environment and BigQuery database with your custom service account.

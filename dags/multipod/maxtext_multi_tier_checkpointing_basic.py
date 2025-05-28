@@ -74,7 +74,7 @@ with models.DAG(
             f" {params['repl_backup_min']} {params['model_to_run']}",
         )
 
-        maxtext_v5p8_save_checkpoint= gke_config.get_gke_config(
+        maxtext_v5p8_save_checkpoint = gke_config.get_gke_config(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
@@ -96,6 +96,6 @@ with models.DAG(
         ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
         (
-          maxtext_v5p8_save_checkpoint
-          >> clean_ramdisk_one
+            maxtext_v5p8_save_checkpoint
+            >> clean_ramdisk_one
         )

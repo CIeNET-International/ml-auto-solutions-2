@@ -271,6 +271,35 @@ class XpkTask(BaseTask):
         run_model >> self.post_process(gcs_path)
     return group
 
+  def validation_run(
+      self,
+      *,
+      ramdisk_directory: str = "",
+  ) -> DAGNode:
+    """ Run a test with checking is restoring from the bucket
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A task group with the following tasks chained: run_model and
+      post_process.
+    """
+    with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
+      validate = xpk.validate_restoring_from_gcs_or_local(
+        task_id="Validation Restore From Gcs Bucket",
+        project_id=self.task_gcp_config.project_name,
+        region=self.task_gcp_config.zone[:-2],
+        cluster_name=self.task_test_config.cluster_name,
+        ramdisk_dir=ramdisk_directory,
+      )
+      (
+        validate
+      )
+    return group
+
   def run_with_interruption_and_validation(
       self,
       *,
@@ -801,7 +830,7 @@ class XpkTask(BaseTask):
       verification_targets >> verify_checkpoint_file
 
     return group
-  
+
   def launch_workload_with_interruption(
       self,
       workload_id: str,
