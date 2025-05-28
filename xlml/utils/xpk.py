@@ -244,6 +244,51 @@ def _execute_command_in_pod(
     raise
 
 
+@task.sensor(poke_interval=30, timeout=1200, mode="reschedule")
+def validate_restoring_from_gcs_or_local(
+    task_id: str,
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    ramdisk_dir: str,
+) -> bool:
+  """Check the EMC is restoring from Bucket or from local Dir """
+
+  # Just give a little more time for testing only.
+  time.sleep(30)
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods_mtc = _list_mtc_pods(core_api)
+  if any(pod.status.phase in ["Pending","Terminating"] for pod in pods_mtc.items):
+    logging.info("Some of the pods is still pending. Waiting to start")
+    return False
+  try:
+    if any(pod.status.phase in ["Failed"] for pod in pods_mtc.items):
+      raise AirflowFailException(f"Bad pod phase. One of the pods Is in Failed")
+  finally:
+    # Checking MTC  pod event when restoring pod
+    logging.info("PODS",pods_mtc.items)
+    if all(pod.status.phase in ["Running"] for pod in pods_mtc.items):
+      logging.info("HERE")
+
+      #Select randomly one pod to check the local ramdisk
+      for i in range(len(pods_mtc.items)-1):
+        logs_mtc = core_api.read_namespaced_pod_log(
+            name=pods_mtc.items[i].metadata.name, namespace=pods_mtc.items[i].metadata.namespace,
+            container="replication-worker"
+        )
+
+        # Check is restoring from Bucket
+        parser_util = parser.Parser()
+        check_mtc_pods = []
+        result = parser_util.check_restore_from_mtc(logs_from_mtc_pod=logs_mtc)
+        check_mtc_pods.append(result)
+        logging.info("MTC pods ==========>",check_mtc_pods)
+
+        # If the result contains 'steps' means that worker pod and MTC pod restore step match.
+        if all(check_mtc_pods):
+          return True
+    return False
+
 @task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
 def check_local_ramdisk(
     project_id: str,
