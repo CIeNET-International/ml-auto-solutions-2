@@ -27,7 +27,6 @@ from xlml.apis import gcp_config, metric_config, test_config
 from xlml.utils import gpu, metric, name_format, ssh, tpu, xpk, gke
 from xlml.utils import multitier_checkpoint
 
-
 class BaseTask(abc.ABC):
   """This is a class to set up base tasks."""
 
@@ -201,7 +200,7 @@ class XpkTask(BaseTask):
         run_model >> self.post_process(gcs_path)
 
     return group
-
+  
   def run_with_interruption(
       self,
       *,
@@ -443,6 +442,7 @@ class XpkTask(BaseTask):
           cluster_name=self.task_test_config.cluster_name,
       )
 
+
       (
           (workload_id, gcs_path)
           >> launch_workload
@@ -450,7 +450,7 @@ class XpkTask(BaseTask):
           >> clean_up_workload
       )
       return group, gcs_path
-
+  
   def run_model_with_interruption_and_validation(
       self,
       gcs_location: Optional[airflow.XComArg] = None,
@@ -695,7 +695,7 @@ class XpkTask(BaseTask):
       )
       run_workload >> wait_for_workload_start
       return group
-
+    
   def launch_workload_with_interruption_and_validation(
       self,
       workload_id: str,
