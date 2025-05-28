@@ -1,9 +1,9 @@
+
 # Copyright 2025 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
+# You may obtain a copy of the License at #
 #      http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
@@ -17,15 +17,17 @@ A DAG to run MaxText multi-tier checkpointing tests.
 """
 import datetime
 from airflow import models
+from airflow.models.taskmixin import DAGNode
 from dags import composer_env, gcs_bucket
 from dags.common.vm_resource import DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode  # Run once a day at 10 am UTC (2 am PST)
+import xlml.utils.xpk as xpk
 
 SCHEDULED_TIME = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_checkpointing_sav04_GCS",
+    dag_id="maxtext_multi_tier_checkpointing_restore_gcs_V2",
     schedule=None,
     tags=[
         "multipod_team",
@@ -39,26 +41,26 @@ with models.DAG(
   base_output_directory = (
       f"{gcs_bucket.CAMILO_BASE_OUTPUT_DIR}/maxtext_multi_tier_checkpointing_phase2"
   )
-  dataset_path = gcs_bucket.TRAIN_DATA_C4
+  dataset_path = gcs_bucket.CAMILO_BASE_C4
   docker_images = [
-      (SetupMode.STABLE, DockerImage.ORBAX_STABLE_TEMPLATED_RUNNER),
+      (SetupMode.STABLE, DockerImage.CAMILO_RUNNER),
   ]
   test_configs = {
       # accelerator: list of slices to test
-      "v5litepod-64": [4],
+      "v5litepod-32": [2],
       # "v6e-64":[2],
   }
   clusters = {
       # accelerator: cluster name
-      "v5litepod-64": XpkClusters.TPU_V5E_64_CLUSTER_CIENET ,
+      "v5litepod-32": XpkClusters.TPU_V5E_32_CLUSTER_CIENET ,
       # "v6e-64": XpkClusters.TPU_V6E_64_CLUSTER_CUSTOM,
   }
   params = {
     "ramdisk": "/local",
-    "steps": 50,
+    "steps": 20,
     "chk_period": 200,
     "chk_local": 10,
-    "repl_backup_min": 5,
+    "repl_backup_min": 1,
     "ici_tensor_parall": 1,
     "use_replicator":True,
     "model_to_run":'llama2-7b'
@@ -68,7 +70,7 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         command = (
-            "bash end_to_end/test_mtc_phase_2_save_path.sh"
+            "bash end_to_end/save_mtc/test_mtc_phase_2_save_path.sh"
             f" multitiercheckpointing-{slice_num}x-{accelerator}"
             f" {base_output_directory} {dataset_path}"
             f" {params['ramdisk']} {params['steps']} "
@@ -77,15 +79,15 @@ with models.DAG(
             f" {params['use_replicator']} {params['model_to_run']}",
         )
 
-        maxtext_v5p8_save_checkpoint = gke_config.get_gke_config(
+        maxtext_v5e32_run = gke_config.get_gke_config(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name="maxtext-multi-tier-checkpointing-phase2-validation",
+            test_name="maxtext-multi-tier-checkpointing-phase2-initial-run-restore-gcs",
             run_model_cmds=command,
             docker_image=image.value,
             test_owner="Camilo Quinones",
-        ).run_with_check_local_ramdisk(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
         clean_cmd = (f"rm -rf {params['ramdisk']}/*",)
         clean_ramdisk_one = gke_config.get_gke_config(
@@ -98,7 +100,42 @@ with models.DAG(
             test_owner="Camilo Quinones",
         ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
 
+        params['steps']=50
+        params["repl_backup_min"]=30
+        command = (
+            "bash end_to_end/save_mtc/test_mtc_phase_2_save_path.sh"
+            f" multitiercheckpointing-{slice_num}x-{accelerator}"
+            f" {base_output_directory} {dataset_path}"
+            f" {params['ramdisk']} {params['steps']} "
+            f" {params['chk_period']} {params['chk_local']}"
+            f" {params['repl_backup_min']} {params['ici_tensor_parall']}"
+            f" {params['use_replicator']} {params['model_to_run']}",
+        )
+
+        maxtext_v5e32_run_2 = gke_config.get_gke_config(
+            num_slices=slice_num,
+            cluster=clusters[accelerator],
+            time_out_in_min=60,
+            test_name="maxtext-multi-tier-checkpointing-phase2-initial-run-gcs-restore",
+            run_model_cmds=command,
+            docker_image=image.value,
+            test_owner="Camilo Quinones",
+        ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+
+        validate = gke_config.get_gke_config(
+            num_slices=slice_num,
+            cluster=clusters[accelerator],
+            time_out_in_min=60,
+            test_name="maxtext-multi-tier-checkpointing-phase2-initial-run-gcsV2",
+            run_model_cmds=command,
+            docker_image=image.value,
+            test_owner="Camilo Quinones",
+        ).validation_run(ramdisk_directory="local")
+
+
         (
-            maxtext_v5p8_save_checkpoint
-            >> clean_ramdisk_one
+          maxtext_v5e32_run
+          >> clean_ramdisk_one
+          >> maxtext_v5e32_run_2
+          >> validate
         )
