@@ -24,7 +24,7 @@ MLPERF_LLM_DIR = "gs://mlperf-llm-public2"
 TRAIN_DATA_C4 = "gs://severus-maxtext-c4-dataset"
 
 # GCS bucket for output
-BASE_OUTPUT_DIR = "gs://ml-auto-solutions/output"
+BASE_OUTPUT_DIR = "gs://severus-maxtext-c4-dataset"
 
 # Multi-tier checkpointing need special permission for GCS Bucket
 # For further question reach out to  Multi-tier Checkpointing Owners.

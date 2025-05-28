@@ -200,7 +200,7 @@ class XpkTask(BaseTask):
         run_model >> self.post_process(gcs_path)
 
     return group
-  
+
   def run_with_interruption(
       self,
       *,

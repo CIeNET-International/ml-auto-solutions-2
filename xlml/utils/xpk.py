@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """Utilities to run workloads with xpk (https://github.com/AI-Hypercomputer/xpk)."""
-
+import datetime
 import os
 import tempfile
 import uuid
@@ -82,6 +82,32 @@ def generate_workload_id(benchmark_id: str) -> str:
   short_benchmark = re.sub(r"[^a-zA-Z0-9-]+", "", benchmark_id)[:32]
   return f"{short_benchmark}{short_id}"
 
+
+@task
+def validate_saving_checkpoint(output_path):
+  hook = GCSHook()
+  pattern = re.compile(r"^gs://(?P<bucket>[^/]+)/(?P<prefix>.+)$")
+  m = pattern.match(output_path)
+  bucket_name = m.group("bucket")
+  prefix = m.group("prefix")
+  logging.info(f"output_path: {output_path}")
+  logging.info(f"bucket: {bucket_name}")
+  for i in ['0']:
+    full_prefix = prefix + "/checkpoints/" + i
+    logging.info(f"prefix: {full_prefix}")
+    objects = hook.list(bucket_name=bucket_name, prefix=full_prefix)
+  # BucketName不用加gs://
+    if not objects or len(objects) <= 0:
+      raise AirflowFailException()
+
+
+@task
+def create_output_path(
+      base_output_directory: str,
+      run_name: str
+  ):
+  gcs_path = os.path.join(base_output_directory, run_name)
+  return gcs_path
 
 @task
 def run_workload(
@@ -519,19 +545,19 @@ def clean_up_workload(
         result.exit_code == 0
     ), f"XPK clean-up failed with code {result.exit_code}"
 
-@task
-def validate_saving_checkpoint(output_path):
-  hook = GCSHook()
-  pattern = re.compile(r"^gs://(?P<bucket>[^/]+)/(?P<prefix>.+)$")
-  m = pattern.match(output_path)
-  bucket_name = m.group("bucket")
-  prefix = m.group("prefix")
-  logging.info(f"output_path:{output_path}")
-  logging.info(f"bucket:{bucket_name}")
-  logging.info(f"prefix:{prefix}")
-  objects = hook.list(bucket_name=bucket_name, prefix=prefix)
-  if not objects or len(objects) <= 0:
-    raise AirflowFailException()
+# @task
+# def validate_saving_checkpoint(output_path):
+#   hook = GCSHook()
+#   pattern = re.compile(r"^gs://(?P<bucket>[^/]+)/(?P<prefix>.+)$")
+#   m = pattern.match(output_path)
+#   bucket_name = m.group("bucket")
+#   prefix = m.group("prefix")
+#   logging.info(f"output_path:{output_path}")
+#   logging.info(f"bucket:{bucket_name}")
+#   logging.info(f"prefix:{prefix}")
+#   objects = hook.list(bucket_name=bucket_name, prefix=prefix)
+#   if not objects or len(objects) <= 0:
+#     raise AirflowFailException()
 
 @task
 def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
