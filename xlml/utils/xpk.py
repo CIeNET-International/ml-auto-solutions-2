@@ -180,6 +180,16 @@ def _list_workload_pods(
   )
   return pods
 
+def _list_mtc_pods(
+    core_api: k8s_client.CoreV1Api
+) -> k8s_client.V1PodList:
+  """List all pods for thecsi Driver"""
+  logging.info(f"Getting pods from CSI MTC Driver")
+  pods = core_api.list_namespaced_pod(
+      label_selector=f"k8s-app=high-scale-checkpointing",
+      namespace="gke-managed-checkpointing",
+  )
+  return pods
 
 def _get_batch_api_client(
     project_id: str, region: str, cluster_name: str
