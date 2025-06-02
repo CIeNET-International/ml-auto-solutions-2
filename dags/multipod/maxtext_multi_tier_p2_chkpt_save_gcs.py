@@ -65,8 +65,6 @@ with models.DAG(
             test_owner=test_owner.ERNIE_C,
         ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
         
-        validate_local_disk = xpk.validate_csi_checkpoint(clusters[accelerator].project, clusters[accelerator].zone[:-2], clusters[accelerator].name)
-
         # cleanup run: unique test_name
         cleanup_command = (f"rm -rf {ram_disk}/*",)
         ram_disk_cleanup = gke_config.get_gke_config(
@@ -81,9 +79,18 @@ with models.DAG(
 
         validate_gcs = xpk.validate_saving_checkpoint(base_output_directory)
         
+        vali_step = int(step) - 1 
+        validate_log = xpk.list_log_entries(project_id=clusters[accelerator].project,
+                                            location=clusters[accelerator].zone[:-2],
+                                            cluster_name=clusters[accelerator].name,
+                                            pod_pattern=run_name,
+                                            text_filter=f"completed step: {str(vali_step)},")
+        
+        
         (
             maxtext_phase2_chkpt_test >>
             ram_disk_cleanup >>
-            validate_gcs
+            validate_gcs >>
+            validate_log
         )
 

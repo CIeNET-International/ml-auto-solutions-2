@@ -83,7 +83,7 @@ with models.DAG(
         validate_log = xpk.list_log_entries(project_id=clusters[accelerator].project,
                                             location=clusters[accelerator].zone[:-2],
                                             cluster_name=clusters[accelerator].name,
-                                            pod_pattern="maxtext_phase2_chkpt_save",
+                                            pod_pattern=run_name,
                                             text_filter=f"completed step: {str(vali_step)},")
         
         (

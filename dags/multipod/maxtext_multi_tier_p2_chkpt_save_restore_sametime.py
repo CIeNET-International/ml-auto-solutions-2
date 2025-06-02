@@ -15,14 +15,14 @@ from xlml.utils import xpk
 SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_sav02_save_gcs",
+    dag_id="maxtext_multi_tier_res07",
     schedule_interval=SCHEDULE,
     start_date=datetime.datetime(2025, 5, 28),
     catchup=False,
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_sav02_save_gcs"
+      f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_res07"
   )
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
   docker_images = [
