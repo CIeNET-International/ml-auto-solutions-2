@@ -40,11 +40,13 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.BASE_OUTPUT_DIR}/maxtext_checkpointing_phase1"  # Fill your output dir
+      # Fill your output dir
+      f"{gcs_bucket.BASE_OUTPUT_DIR}/maxtext_checkpointing_phase1"
   )
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
   docker_images = [
-      (SetupMode.STABLE, DockerImage.ORBAX_STABLE_PURE_RUNNER),  # Fill your Maxtext runner
+      # Fill your Maxtext runner
+      (SetupMode.STABLE, DockerImage.ORBAX_STABLE_PURE_RUNNER),
   ]
   test_configs = {
       # accelerator: list of slices to test
@@ -63,8 +65,8 @@ with models.DAG(
       for slice_num in slices:
         run_name = f"{test_name}-{slice_num}x{accelerator}-{current_datetime}"
         gcs_path = xpk.create_output_path(
-              base_output_directory=base_output_directory,
-              run_name=run_name,
+            base_output_directory=base_output_directory,
+            run_name=run_name,
         )
 
         run_model_commands = (
@@ -97,7 +99,12 @@ with models.DAG(
             run_model_cmds=run_model_commands,
             docker_image=image.value,
             test_owner=test_owner.SEVERUS_H,
-        ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run(
+            ramdisk_directory="local",
+            xpk_branch="main",
+            skip_post_process=True,
+            mtc_enabled=True
+        )
 
         clean_cmd = (f"rm -rf /local/*",)
         clean_ramdisk_one = gke_config.get_gke_config(
@@ -108,12 +115,17 @@ with models.DAG(
               run_model_cmds=clean_cmd,
               docker_image=image.value,
               test_owner=test_owner.SEVERUS_H,
-        ).run(ramdisk_directory="local", xpk_branch="main", skip_post_process=True, mtc_enabled=True)
+        ).run(
+            ramdisk_directory="local",
+            xpk_branch="main",
+            skip_post_process=True,
+            mtc_enabled=True
+        )
 
         validate = xpk.validate_saving_checkpoint(gcs_path)
 
         (
-            maxtext_v5p8_save_checkpoint
+            [gcs_path, maxtext_v5p8_save_checkpoint]
             >> clean_ramdisk_one
             >> validate
         )

@@ -96,9 +96,11 @@ def validate_saving_checkpoint(output_path):
     full_prefix = prefix + "/checkpoints/" + i
     logging.info(f"prefix: {full_prefix}")
     objects = hook.list(bucket_name=bucket_name, prefix=full_prefix)
-  # BucketName不用加gs://
+    # BucketName不用加gs://
     if not objects or len(objects) <= 0:
-      raise AirflowFailException()
+      raise AirflowFailException(
+          f"Specific folders didn't exist: {full_prefix} from {bucket_name}"
+      )
 
 
 @task
@@ -108,6 +110,7 @@ def create_output_path(
   ):
   gcs_path = os.path.join(base_output_directory, run_name)
   return gcs_path
+
 
 @task
 def run_workload(
