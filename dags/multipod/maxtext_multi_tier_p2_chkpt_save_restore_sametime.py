@@ -15,14 +15,14 @@ from xlml.utils import xpk
 SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_sav01_save_local",
+    dag_id="maxtext_multi_tier_sav02_save_gcs",
     schedule_interval=SCHEDULE,
-    start_date=datetime.datetime(2025, 5, 22),
+    start_date=datetime.datetime(2025, 5, 28),
     catchup=False,
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_sav01_save_local"
+      f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_sav02_save_gcs"
   )
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
   docker_images = [
@@ -65,6 +65,42 @@ with models.DAG(
             test_owner=test_owner.ERNIE_C,
         ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
         
+    #     wait_for_workload_completion = xpk.wait_for_workload_completion.override(
+    #       timeout=int(self.task_test_config.timeout.total_seconds()),
+    #   )(
+    #       workload_id,
+    #       self.task_gcp_config.project_name,
+    #       self.task_gcp_config.zone[:-2],
+    #       self.task_test_config.cluster_name,
+    #   )
+
+    #   clean_up_workload = xpk.clean_up_workload(
+    #       workload_id=workload_id,
+    #       project_id=self.task_gcp_config.project_name,
+    #       zone=self.task_gcp_config.zone,
+    #       cluster_name=self.task_test_config.cluster_name,
+    #   )
+
+        maxtext_phase2_chkpt_test = gke_config.get_gke_config(
+            num_slices=slice_num,
+            cluster=clusters[accelerator],
+            time_out_in_min=60,
+            test_name=f"maxtext_phase2_chkpt_save",
+            run_model_cmds=workload_command,
+            docker_image=image.value,
+            test_owner=test_owner.ERNIE_C,
+        ).run_with_no_complete(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
+ 
+        maxtext_phase2_chkpt_test = gke_config.get_gke_config(
+            num_slices=slice_num,
+            cluster=clusters[accelerator],
+            time_out_in_min=60,
+            test_name=f"maxtext_phase2_chkpt_save",
+            run_model_cmds=workload_command,
+            docker_image=image.value,
+            test_owner=test_owner.ERNIE_C,
+        ).run_with_no_complete(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
+ 
         validate_local_disk = xpk.validate_csi_checkpoint(clusters[accelerator].project, clusters[accelerator].zone[:-2], clusters[accelerator].name)
 
         # cleanup run: unique test_name
@@ -79,14 +115,11 @@ with models.DAG(
             test_owner=test_owner.ERNIE_C,
         ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
 
-        validate_log = xpk.list_log_entries(project_id=clusters[accelerator].project,
-                                            location=clusters[accelerator].zone[:-2],
-                                            cluster_name=clusters[accelerator].name,
-                                            pod_pattern="maxtext_phase2_chkpt_save")
+        validate_gcs = xpk.validate_saving_checkpoint(base_output_directory)
         
         (
             maxtext_phase2_chkpt_test >>
-            validate_local_disk >>
-            ram_disk_cleanup
+            ram_disk_cleanup >>
+            validate_gcs
         )
 
