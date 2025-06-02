@@ -78,15 +78,18 @@ with models.DAG(
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
         ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
-
+        
+        vali_step = int(step) - 1 
         validate_log = xpk.list_log_entries(project_id=clusters[accelerator].project,
                                             location=clusters[accelerator].zone[:-2],
                                             cluster_name=clusters[accelerator].name,
-                                            pod_pattern="maxtext_phase2_chkpt_save")
+                                            pod_pattern="maxtext_phase2_chkpt_save",
+                                            text_filter=f"completed step: {str(vali_step)},")
         
         (
             maxtext_phase2_chkpt_test >>
             validate_local_disk >>
-            ram_disk_cleanup
+            ram_disk_cleanup >>
+            validate_log
         )
 

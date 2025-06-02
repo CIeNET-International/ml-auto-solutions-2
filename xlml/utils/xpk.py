@@ -32,7 +32,6 @@ from airflow.providers.google.cloud.operators.gcs import GCSHook
 import re
 from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
-import argparse
 from typing import Optional
 
 
@@ -80,7 +79,7 @@ def list_log_entries(project_id: str, location: str, cluster_name: str,
     """
 
     # Create a Logging Client for the specified project
-    logging_client = logging.Client(project=project_id)
+    logging_client = log_explorer.Client(project=project_id)
 
     # Set the time window for log retrieval: default to last 12 hours if not provided
     if end_time is None:
