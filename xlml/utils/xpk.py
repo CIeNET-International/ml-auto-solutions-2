@@ -641,3 +641,20 @@ def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
       logging.info("Files ===> ", files)
       if len(files) > 0:
         return True
+
+
+@task
+def get_task_time(upstream_task_instance_id: str, **kwargs):
+  """get task start time and end time"""
+  ti = kwargs['ti']
+
+  upstream_ti = ti.get_closest_ti(task_id=upstream_task_instance_id)
+
+  if upstream_ti:
+    start_time = upstream_ti.start_date
+    end_time = upstream_ti.end_date
+    logging.info(f"Task start time: {start_time}")
+    logging.info(f"Task end time: {end_time}")
+    return [start_time, end_time]
+  else:
+    return None
