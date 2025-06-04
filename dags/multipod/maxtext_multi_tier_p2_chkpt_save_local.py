@@ -12,7 +12,6 @@ from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
 from xlml.utils.multitier_checkpoint import verify_last_workload_pod_ramdisk_checkpoint
 from xlml.utils import log_explorer
-from xlml.utils import xpk
 
 SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
 
@@ -90,8 +89,6 @@ with models.DAG(
             skip_post_process=True,
         )
 
-        get_task_time = xpk.get_task_time(maxtext_phase2_chkpt_test)
-
         vali_step = int(step) - 1
         vali_step_list = [i for i in range(0, vali_step, int(local_checkpoint_period))]
         vali_step_list.append(vali_step)
@@ -102,14 +99,12 @@ with models.DAG(
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
             text_filter=f"completed step: ",
-            start_time=get_task_time[0],
-            end_time=get_task_time[1],
             vali_step_list=vali_step_list,
+            upstream_task_instance_id="maxtext_phase2_chkpt_test",
         )
 
         (
             maxtext_phase2_chkpt_test
             >> ram_disk_cleanup
-            >> get_task_time
             >> validate_log
         )
