@@ -39,8 +39,8 @@ with models.DAG(
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
   clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_ERNIE_CIENET}
-  step = 10
-  local_checkpoint_period = 5
+  step = 100
+  local_checkpoint_period = 20
   replicator_backup_interval_minutes = "1"
   use_replicator = "True"
   name_prefix = "maxtext_phase2_chkpt_save"
@@ -107,7 +107,7 @@ with models.DAG(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
-            text_filter=f"Finished asynchronous save `(blocking` `+` `background)` in to",
+            text_filter="Finished asynchronous save `(blocking` `+` `background)` in",
             start_time=start_time,
             end_time=end_time,
             vali_step_list=vali_step_list,

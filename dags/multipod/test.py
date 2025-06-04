@@ -127,25 +127,6 @@ def list_log_entries(
   # Retrieve log entries matching the filter
   logging.info(f"Log filter constructed: {log_filter}")
   entries = logging_client.list_entries(filter_=log_filter)
-  entry_count = 0
-  for entry in entries:
-    entry_count += 1
-    print(f"\n[{entry_count}] LOG ENTRY")
-    print(f"├─ Timestamp: {entry.timestamp}")
-    print(f"├─ Severity: {entry.severity}")
-    print(f"├─ Resource: {entry.resource.type}")
-    print(f"├─ Labels: {entry.resource.labels}")
-    if entry.payload is not None:
-      print("└─ Payload:")
-      # Format payload with indentation
-      payload_str = str(entry.payload)
-      for line in payload_str.split("\n"):
-        print(f"   {line}")
-    print("-" * 80)
-
-  print(f"\n{'='*80}")
-  print(f"SUMMARY: {entry_count} log entries found")
-  print(f"{'='*80}")
 
   return entries
 
@@ -156,6 +137,7 @@ result = validate_log_with_step(
   cluster_name="ernie-cienet-v5p-8",
   namespace="default",
   pod_pattern="maxtextphase2chkptsave-2xv5p",
-  text_filter="Finished asynchronous save `(blocking` `+` `background)` in to")
+  text_filter="Finished asynchronous save `(blocking` `+` `background)` in to",
+  vali_step_list=[0, 5, 9])
 
 print(result)
