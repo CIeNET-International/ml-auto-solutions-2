@@ -7,7 +7,7 @@ from absl import logging
 
 
 @task
-def validate_log(
+def validate_log_with_step(
     project_id: str,
     location: str,
     cluster_name: str,
@@ -39,12 +39,12 @@ def validate_log(
         if vali_step_list:
           for step in vali_step_list:
             vali_str = text_filter + str(step)
+            print(vali_str, line)
             if vali_str in line:
               print(f"├─ Timestamp: {entry.timestamp}")
               print("└─ Payload:")
               print(f"   {line}")
               vali_step_list.remove(step)
-              break
   print(vali_step_list)
   if vali_step_list == [] or vali_step_list is None:
     logging.info("Validate success")

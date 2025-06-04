@@ -103,7 +103,7 @@ with models.DAG(
         vali_step_list.append(vali_step)
 
         end_time = xpk.generate_timestamp()
-        validate_log = log_explorer.validate_log(
+        validate_log = log_explorer.validate_log_with_step(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
