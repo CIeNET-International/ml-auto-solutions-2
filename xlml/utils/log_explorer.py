@@ -18,20 +18,8 @@ def validate_log(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
     vali_step_list: Optional[list] = None,
-    upstream_task_instance_id: str = None, 
-    **kwargs,
 ) -> bool:
   """Validate the workload log is training correct"""
-  ti = kwargs['ti']
-
-  upstream_ti = ti.get_closest_ti(task_id=upstream_task_instance_id)
-
-  if upstream_ti:
-    start_time = upstream_ti.start_date
-    end_time = upstream_ti.end_date
-    logging.info(f"task start time:{start_time}")
-    logging.info(f"task end time:{end_time}")
-
   entries = list_log_entries(
     project_id=project_id,
     location=location,

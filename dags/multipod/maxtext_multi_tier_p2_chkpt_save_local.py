@@ -1,17 +1,17 @@
-"""
-A DAG to run MaxText multi-tier checkpointing tests (phase1: save & validate).
+"""Add commentMore actions
+A DAG to run MaxText multi-tier checkpointing tests (phase2: save & validate).
 """
 
 import datetime
-from datetime import timedelta, timezone
+from datetime import timezone, timedelta
 from airflow import models
 from dags import composer_env, gcs_bucket
 from dags.common import test_owner
 from dags.common.vm_resource import TpuVersion, Zone, DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
-from xlml.utils.multitier_checkpoint import verify_last_workload_pod_ramdisk_checkpoint
 from xlml.utils import log_explorer
+from xlml.utils import xpk
 
 SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
 
@@ -26,17 +26,18 @@ with models.DAG(
       f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_sav01_save_local"
   )
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
-  docker_images = [
-      (SetupMode.JAX_STABLE_STACK, DockerImage.ORBAX_STABLE_PURE_RUNNER)
-  ]
+  docker_images = [(
+      SetupMode.JAX_STABLE_STACK,
+      DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+  )]
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
   clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_ERNIE_CIENET}
-  step = "100"
-  local_checkpoint_period = "20"
+  step = "10"
+  local_checkpoint_period = "5"
   replicator_backup_interval_minutes = "1"
   use_replicator = "True"
-  name_prefix = "maxtext_phase2_chkpt_test"
+  name_prefix = "maxtext_phase2_chkpt_save"
 
   for mode, image in docker_images:
     for accelerator, slices in test_configs.items():
@@ -55,6 +56,8 @@ with models.DAG(
             f"use_replicator_service={use_replicator} replicator_backup_interval_minutes={replicator_backup_interval_minutes} "
             f"run_name={run_name} dataset_path={dataset_path}",
         )
+
+        start_time = xpk.generate_task_time()
 
         # make launch test_name unique
         maxtext_phase2_chkpt_test = gke_config.get_gke_config(
@@ -93,18 +96,21 @@ with models.DAG(
         vali_step_list = [i for i in range(0, vali_step, int(local_checkpoint_period))]
         vali_step_list.append(vali_step)
 
-        end_time = datetime.datetime.now(timezone.utc)
+        end_time = xpk.generate_task_time()
         validate_log = log_explorer.validate_log(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
             text_filter=f"completed step: ",
+            start_time=start_time,
+            end_time=end_time,
             vali_step_list=vali_step_list,
-            upstream_task_instance_id="maxtext_phase2_chkpt_test",
         )
 
         (
-            maxtext_phase2_chkpt_test
+            start_time
+            >> maxtext_phase2_chkpt_test
             >> ram_disk_cleanup
+            >> end_time
             >> validate_log
         )

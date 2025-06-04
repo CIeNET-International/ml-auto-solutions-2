@@ -641,3 +641,8 @@ def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
       logging.info("Files ===> ", files)
       if len(files) > 0:
         return True
+
+
+@task
+def generate_task_time():
+  return datetime.now(timezone.utc)
