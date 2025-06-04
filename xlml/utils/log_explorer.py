@@ -21,17 +21,18 @@ def validate_log_with_step(
 ) -> bool:
   """Validate the workload log is training correct"""
   entries = list_log_entries(
-    project_id=project_id,
-    location=location,
-    cluster_name=cluster_name,
-    namespace=namespace,
-    pod_pattern=pod_pattern,
-    container_name=container_name,
-    text_filter=text_filter,
-    start_time=start_time,
-    end_time=end_time,
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
   )
 
+  new_step_list = []
   for entry in entries:
     if entry.payload is not None:
       payload_str = str(entry.payload)
@@ -39,13 +40,12 @@ def validate_log_with_step(
         if vali_step_list is not None:
           for step in vali_step_list:
             vali_str = "seconds to /local/" + str(step)
-            if vali_str in line:
-              print(f"├─ Timestamp: {entry.timestamp}")
-              print("└─ Payload:")
-              print(f"   {line}")
-              vali_step_list.remove(step)
-  print(vali_step_list)
-  if vali_step_list == [] or vali_step_list is None:
+            if vali_str in line and step not in new_step_list:
+              logging.info(f"├─ Timestamp: {entry.timestamp}")
+              logging.info("└─ Payload:")
+              logging.info(f"   {line}")
+              new_step_list.append(step)
+  if len(vali_step_list) == len(new_step_list):
     logging.info("Validate success")
     return True
   else:
@@ -120,10 +120,6 @@ def list_log_entries(
   # Add text content filter if provided
   if text_filter:
     log_filter += f' SEARCH("{text_filter}")'
-
-    # filter_terms = text_filter.split(",")  # Split by comma
-    # for term in filter_terms:
-    #   log_filter += f' textPayload:"{term.strip()}"'
 
   # Retrieve log entries matching the filter
   logging.info(f"Log filter constructed: {log_filter}")
