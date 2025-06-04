@@ -1,12 +1,10 @@
-from airflow.decorators import task
-from airflow.exceptions import AirflowFailException
+
 from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from absl import logging
 
 
-@task
 def validate_log_with_step(
     project_id: str,
     location: str,
@@ -47,10 +45,10 @@ def validate_log_with_step(
               vali_step_list.remove(step)
   print(vali_step_list)
   if vali_step_list == [] or vali_step_list is None:
-    logging.info("Validate success")
+    print("Validate success")
     return True
   else:
-    raise AirflowFailException()
+    raise
 
 
 def list_log_entries(
@@ -150,3 +148,14 @@ def list_log_entries(
   print(f"{'='*80}")
 
   return entries
+
+
+result = validate_log_with_step(
+  project_id="cienet-cmcs",
+  location="us-east5",
+  cluster_name="ernie-cienet-v5p-8",
+  namespace="default",
+  pod_pattern="maxtextphase2chkptsave-2xv5p",
+  text_filter="Finished asynchronous save `(blocking` `+` `background)` in to")
+
+print(result)
