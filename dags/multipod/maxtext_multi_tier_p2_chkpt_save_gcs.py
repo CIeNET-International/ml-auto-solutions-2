@@ -9,7 +9,6 @@ from dags.common import test_owner
 from dags.common.vm_resource import TpuVersion, Zone, DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
-from xlml.utils.multitier_checkpoint import verify_last_workload_pod_ramdisk_checkpoint
 from xlml.utils import xpk
 
 SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
@@ -17,6 +16,12 @@ SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
 with models.DAG(
     dag_id="maxtext_multi_tier_sav02_save_gcs",
     schedule_interval=SCHEDULE,
+    tags=[
+        "multipod_team",
+        "maxtext",
+        "multi_tier_p2_chkpt_save_gcs",
+        "nightly",
+    ],
     start_date=datetime.datetime(2025, 5, 28),
     catchup=False,
     concurrency=2,

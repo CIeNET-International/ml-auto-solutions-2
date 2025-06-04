@@ -18,6 +18,12 @@ SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
 with models.DAG(
     dag_id="maxtext_multi_tier_sav01_save_local",
     schedule_interval=SCHEDULE,
+    tags=[
+        "multipod_team",
+        "maxtext",
+        "multi_tier_p2_chkpt_save_local",
+        "nightly",
+    ],
     start_date=datetime.datetime(2025, 5, 22),
     catchup=False,
     concurrency=2,
@@ -33,8 +39,8 @@ with models.DAG(
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
   clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_ERNIE_CIENET}
-  step = "10"
-  local_checkpoint_period = "5"
+  step = 100
+  local_checkpoint_period = 20
   replicator_backup_interval_minutes = "1"
   use_replicator = "True"
   name_prefix = "maxtext_phase2_chkpt_save"
@@ -57,7 +63,7 @@ with models.DAG(
             f"run_name={run_name} dataset_path={dataset_path}",
         )
 
-        start_time = xpk.generate_task_time()
+        start_time = xpk.generate_timestamp()
 
         # make launch test_name unique
         maxtext_phase2_chkpt_test = gke_config.get_gke_config(
@@ -92,11 +98,11 @@ with models.DAG(
             skip_post_process=True,
         )
 
-        vali_step = int(step) - 1
-        vali_step_list = [i for i in range(0, vali_step, int(local_checkpoint_period))]
+        vali_step = step - 1
+        vali_step_list = [i for i in range(0, vali_step, local_checkpoint_period)]
         vali_step_list.append(vali_step)
 
-        end_time = xpk.generate_task_time()
+        end_time = xpk.generate_timestamp()
         validate_log = log_explorer.validate_log(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],

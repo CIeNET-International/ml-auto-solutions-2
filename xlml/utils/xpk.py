@@ -644,5 +644,5 @@ def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
 
 
 @task
-def generate_task_time():
+def generate_timestamp():
   return datetime.now(timezone.utc)
