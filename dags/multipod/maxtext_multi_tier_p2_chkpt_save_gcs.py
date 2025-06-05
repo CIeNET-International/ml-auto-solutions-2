@@ -46,7 +46,7 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
-        run_name = f"maxtext_phase2_chkpt_test-{slice_num}x-{accelerator}_{run_time}"
+        run_name = f"maxtext-phase2-chkpt-test-{slice_num}x-{accelerator}-{run_time}"
         workload_command = (
             "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
             "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
@@ -85,10 +85,6 @@ with models.DAG(
             test_owner=test_owner.ERNIE_C,
         ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
         
-        vali_step = step - 1
-        vali_step_list = [i for i in range(0, vali_step, local_checkpoint_period)]
-        vali_step_list.append(vali_step)
-
         end_time = xpk.generate_timestamp()
         validate_gcs_bucket = log_explorer.validate_log_with_gcs(
             project_id=clusters[accelerator].project,
