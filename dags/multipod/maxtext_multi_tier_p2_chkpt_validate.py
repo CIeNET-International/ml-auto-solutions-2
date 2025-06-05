@@ -9,7 +9,6 @@ from dags.common import test_owner
 from dags.common.vm_resource import TpuVersion, Zone, DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
-from xlml.utils.multitier_checkpoint import verify_last_workload_pod_ramdisk_checkpoint
 
 SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
 

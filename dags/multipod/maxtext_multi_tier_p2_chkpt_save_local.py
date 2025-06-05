@@ -111,6 +111,7 @@ with models.DAG(
             start_time=start_time,
             end_time=end_time,
             vali_step_list=vali_step_list,
+            validation_string="seconds to /local/",
         )
 
         (

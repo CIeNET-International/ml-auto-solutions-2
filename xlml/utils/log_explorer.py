@@ -18,6 +18,7 @@ def validate_log_with_step(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
     vali_step_list: Optional[list] = None,
+    validation_string: Optional[str] = None,
 ) -> bool:
   """Validate the workload log is training correct"""
   entries = list_log_entries(
@@ -31,7 +32,9 @@ def validate_log_with_step(
       start_time=start_time,
       end_time=end_time,
   )
-
+  if validation_string is None or vali_step_list is None:
+    logging.info("Validate input can not found")
+    return False
   new_step_list = []
   for entry in entries:
     if entry.payload is not None:
@@ -39,7 +42,7 @@ def validate_log_with_step(
       for line in payload_str.split("\n"):
         if vali_step_list is not None:
           for step in vali_step_list:
-            vali_str = "seconds to /local/" + str(step)
+            vali_str = validation_string + str(step)
             if vali_str in line and step not in new_step_list:
               logging.info(f"├─ Timestamp: {entry.timestamp}")
               logging.info("└─ Payload:")

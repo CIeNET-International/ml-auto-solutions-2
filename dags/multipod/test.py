@@ -16,36 +16,38 @@ def validate_log_with_step(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
     vali_step_list: Optional[list] = None,
+    validation_string: Optional[str] = None
 ) -> bool:
   """Validate the workload log is training correct"""
   entries = list_log_entries(
-    project_id=project_id,
-    location=location,
-    cluster_name=cluster_name,
-    namespace=namespace,
-    pod_pattern=pod_pattern,
-    container_name=container_name,
-    text_filter=text_filter,
-    start_time=start_time,
-    end_time=end_time,
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
   )
-
+  if validation_string is None or vali_step_list is None:
+    logging.info("Validate input can not found")
+    return False
+  new_step_list = []
   for entry in entries:
     if entry.payload is not None:
       payload_str = str(entry.payload)
       for line in payload_str.split("\n"):
         if vali_step_list is not None:
           for step in vali_step_list:
-            vali_str = "seconds to /local/" + str(step)
-            print(vali_str, line)
-            if vali_str in line:
-              print(f"├─ Timestamp: {entry.timestamp}")
-              print("└─ Payload:")
-              print(f"   {line}")
-              vali_step_list.remove(step)
-  print(vali_step_list)
-  if vali_step_list == [] or vali_step_list is None:
-    print("Validate success")
+            vali_str = validation_string + str(step)
+            if vali_str in line and step not in new_step_list:
+              logging.info(f"├─ Timestamp: {entry.timestamp}")
+              logging.info("└─ Payload:")
+              logging.info(f"   {line}")
+              new_step_list.append(step)
+  if len(vali_step_list) == len(new_step_list):
+    logging.info("Validate success")
     return True
   else:
     raise
@@ -135,9 +137,9 @@ result = validate_log_with_step(
   project_id="cienet-cmcs",
   location="us-east5",
   cluster_name="ernie-cienet-v5p-8",
-  namespace="default",
-  pod_pattern="maxtextphase2chkptsave-2xv5p",
-  text_filter="Finished asynchronous save `(blocking` `+` `background)` in to",
+  namespace="gke-managed-checkpointing",
+  pod_pattern="multitier-driver",
+  container_name="replication-worker",
   vali_step_list=[0, 5, 9])
 
 print(result)
