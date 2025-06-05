@@ -29,14 +29,16 @@ def validate_log_with_gcs(
       start_time=start_time,
       end_time=end_time,
   )
+  find_str = "backup/gcs/"
   for entry in entries:
     if entry.payload is not None:
       payload_str = str(entry.payload)
       for line in payload_str.split("\n"):
         print(line)
-        start_index = line.find(bucket_name)
+        start_index = line.find(find_str)
         if start_index != -1:
-          gcs_checkpoint_path = line[start_index:]
+          folder_index = start_index + len(find_str)
+          gcs_checkpoint_path = line[folder_index:]
           print(gcs_checkpoint_path)
         
   # if len(vali_step_list) == len(new_step_list):

@@ -37,7 +37,7 @@ with models.DAG(
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
   clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_ERNIE_CIENET}
-  step = 100
+  step = 500
   local_checkpoint_period = 20
   replicator_backup_interval_minutes = "1"
   use_replicator = "True"
@@ -100,7 +100,7 @@ with models.DAG(
             pod_pattern="multitier-driver",
             start_time=start_time,
             end_time=end_time,
-            bucket_name=base_output_directory,
+            bucket_name=f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/{run_name}",
         )
 
         (
