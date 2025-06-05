@@ -5,6 +5,46 @@ from typing import Optional
 from absl import logging
 
 
+def validate_log_with_gcs(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    bucket_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct"""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      for line in payload_str.split("\n"):
+        print(line)
+        start_index = line.find(bucket_name)
+        if start_index != -1:
+          gcs_checkpoint_path = line[start_index:]
+          print(gcs_checkpoint_path)
+        
+  # if len(vali_step_list) == len(new_step_list):
+  #   logging.info("Validate success")
+  #   return True
+  # else:
+  #   raise
+
 def validate_log_with_step(
     project_id: str,
     location: str,
@@ -38,6 +78,7 @@ def validate_log_with_step(
     if entry.payload is not None:
       payload_str = str(entry.payload)
       for line in payload_str.split("\n"):
+        print(line)
         if vali_step_list is not None:
           for step in vali_step_list:
             vali_str = validation_string + str(step)
@@ -133,13 +174,27 @@ def list_log_entries(
   return entries
 
 
-result = validate_log_with_step(
+# result = validate_log_with_step(
+#   project_id="cienet-cmcs",
+#   location="us-east5",
+#   cluster_name="jf-v5p-8-2",
+#   namespace="gke-managed-checkpointing",
+#   pod_pattern="multitier-driver",
+#   container_name="replication-worker",
+#   text_filter="Successful: backup for step",
+#   vali_step_list=[0, 5, 9],
+#   validation_string="abc")
+
+result = validate_log_with_gcs(
   project_id="cienet-cmcs",
   location="us-east5",
-  cluster_name="ernie-cienet-v5p-8",
+  cluster_name="jf-v5p-8-2",
   namespace="gke-managed-checkpointing",
   pod_pattern="multitier-driver",
   container_name="replication-worker",
-  vali_step_list=[0, 5, 9])
+  text_filter="Successful: backup for step",
+  bucket_name="backup/gcs"
+)
 
 print(result)
+

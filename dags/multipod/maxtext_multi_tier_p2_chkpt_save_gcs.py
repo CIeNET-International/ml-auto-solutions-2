@@ -90,24 +90,19 @@ with models.DAG(
         vali_step_list.append(vali_step)
 
         end_time = xpk.generate_timestamp()
-        # validate_log = log_explorer.validate_log_with_step(
-        #     project_id=clusters[accelerator].project,
-        #     location=clusters[accelerator].zone[:-2],
-        #     cluster_name=clusters[accelerator].name,
-        #     text_filter="Successful: backup for step",
-        #     namespace="gke-managed-checkpointing",
-        #     container_name="replication-worker",
-        #     pod_pattern="multitier-driver",
-        #     start_time=start_time,
-        #     end_time=end_time,
-        #     vali_step_list=vali_step_list,
-        #     validation_string="Successful: backup for step"
-        # )
-
-        validate_gcs_bucket = xpk.validate_gcs_checkpoint_p2(
-          f"{base_output_directory}/{run_name}"
+        validate_gcs_bucket = log_explorer.validate_log_with_gcs(
+            project_id=clusters[accelerator].project,
+            location=clusters[accelerator].zone[:-2],
+            cluster_name=clusters[accelerator].name,
+            text_filter="Successful: backup for step",
+            namespace="gke-managed-checkpointing",
+            container_name="replication-worker",
+            pod_pattern="multitier-driver",
+            start_time=start_time,
+            end_time=end_time,
+            bucket_name=base_output_directory,
         )
-        
+
         (
             start_time
             >> maxtext_phase2_chkpt_test
