@@ -37,7 +37,7 @@ with models.DAG(
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
   clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_ERNIE_CIENET}
-  step = 500
+  step = 200
   local_checkpoint_period = 20
   replicator_backup_interval_minutes = "1"
   use_replicator = "True"
