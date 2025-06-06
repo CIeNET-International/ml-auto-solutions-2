@@ -54,7 +54,7 @@ with models.DAG(
             "python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
             f"global_parameter_scale=1 base_output_directory={base_output_directory} "
             f"dataset_type=synthetic steps={step} per_device_batch_size=1 "
-            f"max_target_length=256 local_checkpoint_period={local_checkpoint_period}"
+            f"max_target_length=256 local_checkpoint_period={local_checkpoint_period} "
             "reuse_example_batch=1 enable_emergency_checkpoint=true "
             f"local_checkpoint_directory={ram_disk} checkpoint_period={checkpoint_period} "
             f"use_replicator_service={use_replicator} replicator_backup_interval_minutes={replicator_backup_interval_minutes} "
