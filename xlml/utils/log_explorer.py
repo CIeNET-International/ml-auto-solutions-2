@@ -8,6 +8,46 @@ from xlml.utils import gcs
 
 
 @task
+def validate_log_exist(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct"""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  log_list = []
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      log_list.append(payload_str)
+      for line in payload_str.split("\n"):
+        logging.info(f"├─ Timestamp: {entry.timestamp}")
+        logging.info("└─ Payload:")
+        logging.info(f"   {line}")
+  if len(log_list) > 0:
+    logging.info("Validate success")
+    return log_list
+  else:
+    raise AirflowFailException()
+  
+
+@task
 def validate_log_with_gcs(
     project_id: str,
     location: str,
@@ -32,7 +72,9 @@ def validate_log_with_gcs(
       start_time=start_time,
       end_time=end_time,
   )
-  find_str = "backup/gcs/"
+  find_str = " to backup/gcs/"
+  find_step = "step "
+  gcs_save_step_list = []
   for entry in entries:
     if entry.payload is not None:
       payload_str = str(entry.payload)
@@ -44,12 +86,25 @@ def validate_log_with_gcs(
           gcs_checkpoint_path = line[folder_index:]
           if gcs_checkpoint_path is not None:
             print(gcs_checkpoint_path)
-            checkpoint_validation = gcs.validate_gcs_checkpoint_p2(
+            bucket_files = gcs.validate_gcs_checkpoint_p2(
                 f"{bucket_name}/{gcs_checkpoint_path}/"
             )
+            checkpoint_validation = False
+            if len(bucket_files) > 0:
+              for file in bucket_files:
+                if ".data" in file:
+                  checkpoint_validation = True
             if not checkpoint_validation:
-              raise AirflowFailException()
-  return True
+              raise AirflowFailException(
+                  f"Checkpoint files can not found in {gcs_checkpoint_path}"
+              )
+            step_index = line.find(find_step)
+            if step_index != -1:
+              step_number_index = step_index + len(find_step)
+              step = line[step_number_index:start_index]
+              if step not in gcs_save_step_list:
+                gcs_save_step_list.append(int(step))
+  return max(gcs_save_step_list)
 
 
 @task

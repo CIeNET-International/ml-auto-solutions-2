@@ -29,7 +29,9 @@ def validate_log_with_gcs(
       start_time=start_time,
       end_time=end_time,
   )
-  find_str = "backup/gcs/"
+  find_str = " to backup/gcs/"
+  find_step = "step "
+  gcs_save_step_list = []
   for entry in entries:
     if entry.payload is not None:
       payload_str = str(entry.payload)
@@ -40,6 +42,13 @@ def validate_log_with_gcs(
           folder_index = start_index + len(find_str)
           gcs_checkpoint_path = line[folder_index:]
           print(gcs_checkpoint_path)
+          step_index = line.find(find_step)
+          if step_index != -1:
+            step_number_index = step_index + len(find_step)
+            step = line[step_number_index:start_index]
+            if step not in gcs_save_step_list:
+              gcs_save_step_list.append(int(step))
+  print(max(gcs_save_step_list))
         
   # if len(vali_step_list) == len(new_step_list):
   #   logging.info("Validate success")
@@ -176,6 +185,45 @@ def list_log_entries(
   return entries
 
 
+def validate_log_exist(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct"""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  log_list = []
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      log_list.append(payload_str)
+      for line in payload_str.split("\n"):
+        logging.info(f"├─ Timestamp: {entry.timestamp}")
+        logging.info("└─ Payload:")
+        logging.info(f"   {line}")
+  if len(log_list) > 0:
+    print(len(log_list))
+    logging.info("Validate success")
+    return log_list
+  else:
+    raise
+
 # result = validate_log_with_step(
 #   project_id="cienet-cmcs",
 #   location="us-east5",
@@ -187,15 +235,17 @@ def list_log_entries(
 #   vali_step_list=[0, 5, 9],
 #   validation_string="abc")
 
-result = validate_log_with_gcs(
+result = validate_log_exist(
   project_id="cienet-cmcs",
   location="us-east5",
-  cluster_name="jf-v5p-8-2",
+  cluster_name="ernie-cienet-v5p-8",
   namespace="gke-managed-checkpointing",
   pod_pattern="multitier-driver",
   container_name="replication-worker",
+  start_time = datetime.now(timezone.utc) - timedelta(hours=24),
+  end_time=datetime.now(timezone.utc),
   text_filter="Successful: backup for step",
-  bucket_name="backup/gcs"
+  # bucket_name="backup/gcs"
 )
 
 print(result)

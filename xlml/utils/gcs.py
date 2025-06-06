@@ -15,9 +15,4 @@ def validate_gcs_checkpoint_p2(output_path):
   files = hook.list(bucket_name=bucket_name, prefix=prefix)
   print(files, type(files))
   logging.info("Files ===> ", files)
-  if len(files) > 0:
-    for file in files:
-      if ".data" in file:
-        print(file)
-        return True
-  return False
+  return files
