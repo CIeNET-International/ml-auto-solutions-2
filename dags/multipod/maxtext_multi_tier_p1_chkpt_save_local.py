@@ -28,9 +28,7 @@ with models.DAG(
     catchup=False,
     concurrency=2,
 ) as dag:
-  base_output_directory = (
-      f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_p1_sav01_save_local"
-  )
+  base_output_directory = f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_p1_sav01_save_local"
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
   docker_images = [(
       SetupMode.JAX_STABLE_STACK,
