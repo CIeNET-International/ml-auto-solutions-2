@@ -99,7 +99,9 @@ with models.DAG(
         )
 
         vali_step = step - 1
-        vali_step_list = [i for i in range(0, vali_step, local_checkpoint_period)]
+        vali_step_list = [
+            i for i in range(0, vali_step, local_checkpoint_period)
+        ]
         vali_step_list.append(vali_step)
 
         end_time = xpk.generate_timestamp()
