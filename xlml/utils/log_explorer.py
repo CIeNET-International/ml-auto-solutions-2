@@ -153,7 +153,7 @@ def validate_log_with_step(
     logging.info("Validate success")
     return True
   else:
-    raise AirflowFailException()
+    raise AirflowFailException("Validate not correct")
 
 
 def list_log_entries(
