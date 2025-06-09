@@ -47,12 +47,12 @@ with models.DAG(
   ]
   test_configs = {
       # accelerator: list of slices to test
-      "v5litepod-32": [2],
+      "v5litepod-8": [2],
       # "v6e-64":[2],
   }
   clusters = {
       # accelerator: cluster name
-      "v5litepod-32": XpkClusters.TPU_V5P_8_CLUSTER_CIENET,
+      "v5litepod-8": XpkClusters.TPU_V5P_8_CLUSTER_CIENET,
       # "v6e-64": XpkClusters.TPU_V6E_64_CLUSTER_CUSTOM,
   }
   params = {
@@ -103,7 +103,7 @@ with models.DAG(
         params['steps']=50
         params["repl_backup_min"]=30
         command = (
-            "bash end_to_end/save_mtc/test_mtc_phase_2_save_path.sh"
+            "bash end_to_end/test_mtc_phase_2_save_path.sh"
             f" multitiercheckpointing-{slice_num}x-{accelerator}"
             f" {base_output_directory} {dataset_path}"
             f" {params['ramdisk']} {params['steps']} "
