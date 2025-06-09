@@ -16,20 +16,22 @@
 
 import datetime
 import sys
-from typing import Optional, List, Dict, Any
 from unittest import mock
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 
-# Mocking Airflow decorators and exceptions as they are not needed for unit logic tests
+# Mocking Airflow decorators and exceptions as 
+# they are not needed for unit logic tests
 # and might cause import errors outside an Airflow environment.
 # For actual Airflow DAG testing, you'd use Airflow's test utilities.
 mock_task = mock.MagicMock(return_value=lambda f: f)
 mock_airflow_fail_exception = type('AirflowFailException', (Exception,), {})
 
 sys.modules['airflow.decorators'] = mock.MagicMock(task=mock_task)
-sys.modules['airflow.exceptions'] = mock.MagicMock(AirflowFailException=mock_airflow_fail_exception)
+sys.modules['airflow.exceptions'] = mock.MagicMock(
+  AirflowFailException=mock_airflow_fail_exception
+)
 
 # Mocking Google Cloud Logging and xlml.utils.gcs
 mock_gcp_logging_client = mock.MagicMock()
@@ -48,7 +50,7 @@ sys.modules['absl.logging'] = mock_absl_logging
 # Assuming log_explorer.py is in the same directory or accessible via PYTHONPATH
 # If log_explorer.py is in a subdirectory (e.g., 'dags/utils/log_explorer.py'),
 # adjust the import path accordingly.
-from log_explorer import (
+from xlml.utils.log_explorer import (
     validate_gcs_checkpoint_save,
     validate_log_with_step,
     list_log_entries,
@@ -260,7 +262,6 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
   @mock.patch('log_explorer.list_log_entries')
   def test_validate_gcs_checkpoint_save(
       self,
-      test_name,
       mock_entries,
       mock_gcs_files_return,
       expected_result,
@@ -352,7 +353,6 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
   @mock.patch('log_explorer.list_log_entries')
   def test_validate_log_with_step(
       self,
-      test_name,
       mock_entries,
       vali_step_list,
       expected_result,
