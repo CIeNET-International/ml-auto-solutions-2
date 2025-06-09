@@ -122,4 +122,3 @@ with models.DAG(
             >> end_time
             >> validate_log
         )
-
