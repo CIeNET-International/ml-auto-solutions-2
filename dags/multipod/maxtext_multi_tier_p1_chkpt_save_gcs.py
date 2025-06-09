@@ -81,7 +81,7 @@ with models.DAG(
             xpk_branch="main",
             skip_post_process=True,
         )
-        
+
         # cleanup run: unique test_name
         cleanup_command = (f"rm -rf {ram_disk}/*",)
         ram_disk_cleanup = gke_config.get_gke_config(
@@ -98,7 +98,7 @@ with models.DAG(
             xpk_branch="main",
             skip_post_process=True,
         )
-        
+
         vali_step = step - 1
         vali_step_list = [i for i in range(0, vali_step, checkpoint_period)]
         vali_step_list.append(vali_step)
