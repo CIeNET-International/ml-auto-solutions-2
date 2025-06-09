@@ -20,17 +20,22 @@ from unittest import mock
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
+from xlml.utils.log_explorer import (
+    validate_gcs_checkpoint_save,
+    validate_log_with_step,
+    list_log_entries,
+)
 
-# Mocking Airflow decorators and exceptions as 
+# Mocking Airflow decorators and exceptions as
 # they are not needed for unit logic tests
 # and might cause import errors outside an Airflow environment.
 # For actual Airflow DAG testing, you'd use Airflow's test utilities.
 mock_task = mock.MagicMock(return_value=lambda f: f)
-mock_airflow_fail_exception = type('AirflowFailException', (Exception,), {})
+mock_AirflowFailException = type("AirflowFailException", (Exception,), {})
 
-sys.modules['airflow.decorators'] = mock.MagicMock(task=mock_task)
-sys.modules['airflow.exceptions'] = mock.MagicMock(
-  AirflowFailException=mock_airflow_fail_exception
+sys.modules["airflow.decorators"] = mock.MagicMock(task=mock_task)
+sys.modules["airflow.exceptions"] = mock.MagicMock(
+  AirflowFailException=mock_AirflowFailException
 )
 
 # Mocking Google Cloud Logging and xlml.utils.gcs
@@ -46,17 +51,6 @@ sys.modules['xlml.utils.gcs'] = mock_gcs
 mock_absl_logging = mock.MagicMock()
 sys.modules['absl.logging'] = mock_absl_logging
 
-# Now import the functions from your log_explorer.py
-# Assuming log_explorer.py is in the same directory or accessible via PYTHONPATH
-# If log_explorer.py is in a subdirectory (e.g., 'dags/utils/log_explorer.py'),
-# adjust the import path accordingly.
-from xlml.utils.log_explorer import (
-    validate_gcs_checkpoint_save,
-    validate_log_with_step,
-    list_log_entries,
-)
-
-
 # Helper Mock Class to simulate a LogEntry object from google-cloud-logging
 class MockLogEntry:
   """A mock object to simulate a Google Cloud LogEntry."""
@@ -66,7 +60,7 @@ class MockLogEntry:
     self.timestamp = timestamp if timestamp else datetime.datetime.now(
         datetime.timezone.utc
     )
-    # Add other attributes if your functions access them (e.g., severity, resource)
+    # Add other attributes if your functions access them
     self.severity = "INFO"
     self.resource = mock.MagicMock(
         labels={
@@ -113,8 +107,12 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
           None,
           None,
           (
-              datetime.datetime(2025, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc),
-              datetime.datetime(2025, 1, 1, 1, 0, 0, tzinfo=datetime.timezone.utc),
+              datetime.datetime(
+                2025, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc
+              ),
+              datetime.datetime(
+                2025, 1, 1, 1, 0, 0, tzinfo=datetime.timezone.utc
+              ),
           ),
       ),
       (
@@ -255,7 +253,7 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
           [],
           [],
           False,
-          "Error fetching logs", # Expecting AirflowFailException from list_log_entries error
+          "Error fetching logs", 
           True, # Indicates list_log_entries should throw an error
       ),
   )
@@ -283,7 +281,7 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
 
     if expected_exception_message:
       with self.assertRaisesRegex(
-          mock_airflow_fail_exception, expected_exception_message
+          mock_AirflowFailException, expected_exception_message
       ):
         validate_gcs_checkpoint_save(
             project_id=project_id,
@@ -299,7 +297,8 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
           bucket_name=bucket_name,
       )
       self.assertEqual(result, expected_result)
-      if "backup/gcs/" in str(mock_entries): # Check get_gcs_files only if path is expected to be found
+      if "backup/gcs/" in str(mock_entries): 
+        # Check get_gcs_files only if path is expected to be found
         # Assert get_gcs_files was called with the correct path
         mock_gcs.get_gcs_files.assert_called_once_with(
             f"{bucket_name}/2025-06-05_03-07/"
@@ -346,7 +345,8 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
           [],
           [1000], # Vali step list is present
           False,
-          "Error fetching logs", # Expecting AirflowFailException from list_log_entries error
+          "Error fetching logs", 
+          # Expecting AirflowFailException from list_log_entries error
           True, # Indicates list_log_entries should throw an error
       ),
   )
@@ -371,7 +371,7 @@ class LogExplorerTest(parameterized.TestCase, absltest.TestCase):
 
     if expected_exception_message:
       with self.assertRaisesRegex(
-          mock_airflow_fail_exception, expected_exception_message
+          mock_AirflowFailException, expected_exception_message
       ):
         validate_log_with_step(
             project_id=project_id,
