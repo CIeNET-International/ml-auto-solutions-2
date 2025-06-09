@@ -201,6 +201,44 @@ class XpkTask(BaseTask):
 
     return group
   
+  def run_with_workload_id(
+      self,
+      *,
+      gcs_location: Optional[airflow.XComArg] = None,
+      use_vertex_tensorboard: bool = False,
+      use_pathways: bool = False,
+      skip_post_process: bool = False,
+      ramdisk_directory: str = "",
+      mtc_enabled: bool = False,
+      xpk_branch: str = xpk.MAIN_BRANCH,
+      workload_id: str = None,
+  ) -> DAGNode:
+    """Run a test job within a docker image with specific workload id.
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A task group with the following tasks chained: run_model and
+      post_process.
+    """
+    with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
+      run_model, gcs_path = self.run_model_with_workload_id(
+          gcs_location,
+          use_vertex_tensorboard,
+          use_pathways,
+          ramdisk_directory,
+          mtc_enabled,
+          xpk_branch,
+          workload_id,
+      )
+      if not skip_post_process:
+        run_model >> self.post_process(gcs_path)
+
+    return group
+
   def run_with_no_complete(
       self,
       *,
