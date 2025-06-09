@@ -31,15 +31,16 @@ with models.DAG(
       f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_p1_sav02_save_gcs"
   )
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
-  docker_images = [
-      (SetupMode.JAX_STABLE_STACK, DockerImage.ORBAX_STABLE_PURE_RUNNER)
-  ]
+  docker_images = [(
+      SetupMode.JAX_STABLE_STACK,
+      DockerImage.ORBAX_STABLE_PURE_RUNNER
+  )]
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
   clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_ERNIE_CIENET}
   step = 200
   checkpoint_period = 20
-  local_checkpoint_period=20
+  local_checkpoint_period = 20
   replicator_backup_interval_minutes = "1"
   use_replicator = "False"
 
@@ -47,7 +48,9 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
-        run_name = f"maxtext-phase2-chkpt-test-{slice_num}x-{accelerator}-{run_time}"
+        run_name = (
+            f"maxtext-phase2-chkpt-test-{slice_num}x-{accelerator}-{run_time}"
+        )
         workload_command = (
             "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
             "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
@@ -72,7 +75,12 @@ with models.DAG(
             run_model_cmds=workload_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
-        ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
+        ).run(
+            ramdisk_directory=ram_disk,
+            mtc_enabled=True,
+            xpk_branch="main",
+            skip_post_process=True
+        )
         
         # cleanup run: unique test_name
         cleanup_command = (f"rm -rf {ram_disk}/*",)
@@ -84,12 +92,15 @@ with models.DAG(
             run_model_cmds=cleanup_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
-        ).run(ramdisk_directory=ram_disk, mtc_enabled=True, xpk_branch="main", skip_post_process=True)
+        ).run(
+            ramdisk_directory=ram_disk,
+            mtc_enabled=True,
+            xpk_branch="main",
+            skip_post_process=True
+        )
         
         vali_step = step - 1
-        vali_step_list = [
-            i for i in range(0, vali_step, checkpoint_period)
-        ]
+        vali_step_list = [i for i in range(0, vali_step, checkpoint_period)]
         vali_step_list.append(vali_step)
 
         end_time = xpk.generate_timestamp()
