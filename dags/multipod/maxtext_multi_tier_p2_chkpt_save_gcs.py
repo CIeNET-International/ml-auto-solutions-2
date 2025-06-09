@@ -6,13 +6,13 @@ import datetime
 from airflow import models
 from dags import composer_env, gcs_bucket
 from dags.common import test_owner
-from dags.common.vm_resource import TpuVersion, Zone, DockerImage, XpkClusters
+from dags.common.vm_resource import DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
 from xlml.utils import log_explorer
 from xlml.utils import xpk
 
-SCHEDULE = None if not composer_env.is_prod_env() else "0 10 * * *"
+SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
     dag_id="maxtext_multi_tier_sav01_save_local",
@@ -39,7 +39,7 @@ with models.DAG(
   clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER}
   step = 500
   local_checkpoint_period = 20
-  replicator_backup_interval_minutes = "1"
+  replicator_backup_interval_minutes = 1
   use_replicator = "True"
   name_prefix = "maxtext_phase2_chkpt_save"
 
