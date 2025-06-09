@@ -41,9 +41,9 @@ with models.DAG(
   base_output_directory = (
       f"{gcs_bucket.CAMILO_BASE_OUTPUT_DIR}/maxtext_multi_tier_checkpointing_phase2"
   )
-  dataset_path = gcs_bucket.CAMILO_BASE_C4
+  dataset_path = gcs_bucket.TRAIN_DATA_C4
   docker_images = [
-      (SetupMode.STABLE, DockerImage.CAMILO_RUNNER),
+      (SetupMode.STABLE, DockerImage.ORBAX_STABLE_TEMPLATED_RUNNER),
   ]
   test_configs = {
       # accelerator: list of slices to test
@@ -52,7 +52,7 @@ with models.DAG(
   }
   clusters = {
       # accelerator: cluster name
-      "v5litepod-32": XpkClusters.TPU_V5E_32_CLUSTER_CIENET ,
+      "v5litepod-32": XpkClusters.TPU_V5P_8_CLUSTER_CIENET,
       # "v6e-64": XpkClusters.TPU_V6E_64_CLUSTER_CUSTOM,
   }
   params = {
@@ -70,7 +70,7 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         command = (
-            "bash end_to_end/save_mtc/test_mtc_phase_2_save_path.sh"
+            "bash end_to_end/test_mtc_phase_2_save_path.sh"
             f" multitiercheckpointing-{slice_num}x-{accelerator}"
             f" {base_output_directory} {dataset_path}"
             f" {params['ramdisk']} {params['steps']} "
