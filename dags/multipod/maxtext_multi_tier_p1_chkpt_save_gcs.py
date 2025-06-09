@@ -33,7 +33,7 @@ with models.DAG(
   dataset_path = gcs_bucket.MLPERF_LLM_DIR
   docker_images = [(
       SetupMode.JAX_STABLE_STACK,
-      DockerImage.ORBAX_STABLE_PURE_RUNNER
+      DockerImage.ORBAX_STABLE_PURE_RUNNER,
   )]
   ram_disk = "/local"
   test_configs = {"v5p-8": [2]}
@@ -79,7 +79,7 @@ with models.DAG(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
             xpk_branch="main",
-            skip_post_process=True
+            skip_post_process=True,
         )
         
         # cleanup run: unique test_name
@@ -96,7 +96,7 @@ with models.DAG(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
             xpk_branch="main",
-            skip_post_process=True
+            skip_post_process=True,
         )
         
         vali_step = step - 1
