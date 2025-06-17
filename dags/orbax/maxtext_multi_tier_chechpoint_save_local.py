@@ -24,23 +24,23 @@ with models.DAG(
         "multi_tier_p2_chkpt_save_local",
         "nightly",
     ],
-    start_date=datetime.datetime(2025, 5, 22),
+    start_date=datetime.datetime(2025, 6, 12),
     catchup=False,
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_sav01_save_local"
+      f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_sav01_save_local"
   )
   docker_images = [(
-      SetupMode.JAX_STABLE_STACK,
+      SetupMode.NIGHTLY,
       DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
   )]
   ram_disk = "/local"
-  test_configs = {"v5p-8": [2]}
-  clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER_ERNIE_CIENET}
-  step = 30
+  test_configs = {"v5p-128": [2]}
+  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER}
+  step = 100
   local_checkpoint_period = 20
-  replicator_backup_interval_minutes = 2
+  replicator_backup_interval_minutes = 1
   use_replicator = "True"
   name_prefix = "maxtext_phase2_chkpt_save"
   model_name = "llama2-7b"
@@ -49,22 +49,22 @@ with models.DAG(
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
         delete_cpc = orbax.delete_cpc(
-          clusters[accelerator].project,
-          clusters[accelerator].zone[:-2],
-          clusters[accelerator].name,
-          "ernie-orbax-v5p",
-          "ct5p-hightpu-4t",
-          "google.com/tpu",
-          "800000Mi",
+            clusters[accelerator].project,
+            clusters[accelerator].zone[:-2],
+            clusters[accelerator].name,
+            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            "ct5p-hightpu-4t",
+            "google.com/tpu",
+            "800000Mi",
         )
         apply_cpc = orbax.apply_cpc(
-          clusters[accelerator].project,
-          clusters[accelerator].zone[:-2],
-          clusters[accelerator].name,
-          "ernie-orbax-v5p",
-          "ct5p-hightpu-4t",
-          "google.com/tpu",
-          "800000Mi",
+            clusters[accelerator].project,
+            clusters[accelerator].zone[:-2],
+            clusters[accelerator].name,
+            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            "ct5p-hightpu-4t",
+            "google.com/tpu",
+            "800000Mi",
         )
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
         run_name = f"{name_prefix}-{slice_num}x-{accelerator}_{run_time}"
