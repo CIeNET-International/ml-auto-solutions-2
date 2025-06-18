@@ -22,6 +22,7 @@ from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
 from airflow.hooks.subprocess import SubprocessHook
 from kubernetes import client as k8s_client
+from google.cloud import compute_v1
 from xlml.apis import metric_config
 from xlml.utils import gke
 from xlml.utils import parser
@@ -30,9 +31,9 @@ from kubernetes.stream import stream
 import time
 from airflow.providers.google.cloud.operators.gcs import GCSHook
 import re
-from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import List, Tuple, Optional
+import sys
 
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
@@ -196,6 +197,40 @@ def _get_pods(
   )
   return pods
 
+def _find_target_pod_node(
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+) -> str:
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods = _get_workload_job(core_api, workload_id)
+  pod_node_pairs = []
+  pattern = re.compile(r".*slice-job-(\d+)-(\d+)-\w+")
+  
+  for pod in pods.items:
+      if pod.status.phase == "Running" and pod.spec.node_name:
+          if pattern.match(pod.metadata.name):
+              pod_node_pairs.append((pod.metadata.name, pod.spec.node_name))
+              
+  """Find the pod with the highest slice and pod numbers."""
+  def extract_numbers(pod_name: str) -> Tuple[int, int]:
+      """Extract slice and pod numbers from pod name."""
+      match = re.search(r'slice-job-(\d+)-(\d+)-', pod_name)
+      if match:
+          return int(match.group(1)), int(match.group(2))
+      return (0, 0)
+  
+  # Sort by slice number, then by pod number, and get the last (highest) one
+  sorted_pairs = sorted(pod_node_pairs, key=lambda x: extract_numbers(x[0]))
+  target_pod, target_node = sorted_pairs[-1]
+  
+  logging.info("Identified Pod for node deletion:")
+  logging.info(f"  Pod Name:   {target_pod}")
+  logging.info(f"  Node Name:  {target_node}")
+  logging.info("-" * 72)
+  
+  return target_node
 
 def _list_mtc_pods(
     core_api: k8s_client.CoreV1Api
@@ -565,3 +600,45 @@ def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
 @task
 def generate_timestamp():
   return datetime.now(timezone.utc)
+
+@task
+def delete_node(
+  project_id: str,
+  region: str,
+  cluster_name: str,
+  workload_id: str,
+  zone: str,
+  project: str,
+  dry_run: bool = False
+) -> None:
+  
+  node_name = _find_target_pod_node(
+    project_id,
+    region,
+    cluster_name,
+    workload_id,
+  )
+  """Delete the specified compute instance."""
+  if dry_run:
+      logging.info(f"DRY RUN: Would delete node: {node_name}"
+                   f"in zone: {zone} (project: {project})")
+      return
+  
+  logging.info(f"Proceeding to delete node: {node_name}")
+  try:
+      # Initialize the Compute Engine client
+      instances_client = compute_v1.InstancesClient()
+      
+      # Delete the instance
+      operation = instances_client.delete(
+          project=project,
+          zone=zone,
+          instance=node_name
+      )
+      
+      logging.info(f"Deletion operation started for node: {node_name}")
+      logging.info(f"Operation: {operation.name}")
+      logging.info(f"Deletion command executed for node: {node_name}")
+  except Exception as e:
+      logging.info(f"Error deleting node {node_name}: {e}", file=sys.stderr)
+      sys.exit(1)

@@ -16,15 +16,15 @@ from xlml.utils import orbax
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_sav01_save_local",
+    dag_id="maxtext_multi_tier_res09_restore_local_node_interuption",
     schedule_interval=SCHEDULE,
     tags=[
         "multipod_team",
         "maxtext",
-        "multi_tier_p2_chkpt_save_local",
+        "multi_tier_p2_chkpt_restore_local_node_interuption",
         "nightly",
     ],
-    start_date=datetime.datetime(2025, 6, 12),
+    start_date=datetime.datetime(2025, 6, 17),
     catchup=False,
     concurrency=2,
 ) as dag:
@@ -67,7 +67,7 @@ with models.DAG(
             "800000Mi",
         )
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
-        run_name = f"{name_prefix}-{slice_num}x-{accelerator}_{run_time}"
+        run_name = f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}_{run_time}"
         workload_command = (
             "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
             "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
@@ -95,7 +95,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="develop",
+            xpk_branch="main",
             skip_post_process=True,
         )
 
@@ -112,7 +112,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="develop",
+            xpk_branch="main",
             skip_post_process=True,
         )
 
