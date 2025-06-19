@@ -566,6 +566,7 @@ class XpkTask(BaseTask):
           project_id=self.task_gcp_config.project_name,
           zone=self.task_gcp_config.zone,
           cluster_name=self.task_test_config.cluster_name,
+          xpk_branch=xpk_branch,
       )
 
       (
@@ -914,16 +915,14 @@ class XpkTask(BaseTask):
             self.task_test_config.benchmark_id,
         )
 
-      launch_workload_with_interruption = (
-          self.launch_workload_with_node_interruption(
-              workload_id,
-              gcs_path,
-              use_vertex_tensorboard,
-              use_pathways,
-              ramdisk_directory,
-              mtc_enabled,
-              xpk_branch,
-          )
+      launch_workload_with_interruption = self.launch_workload_with_node_interruption(
+          workload_id,
+          gcs_path,
+          use_vertex_tensorboard,
+          use_pathways,
+          ramdisk_directory,
+          mtc_enabled,
+          xpk_branch,
       )
 
       wait_for_workload_completion = xpk.wait_for_workload_completion.override(
@@ -940,6 +939,7 @@ class XpkTask(BaseTask):
           project_id=self.task_gcp_config.project_name,
           zone=self.task_gcp_config.zone,
           cluster_name=self.task_test_config.cluster_name,
+          xpk_branch=xpk_branch,
       )
 
       (
@@ -1238,7 +1238,7 @@ class XpkTask(BaseTask):
           zone=self.task_gcp_config.zone,
           cluster_name=self.task_test_config.cluster_name,
           workload_id=workload_id,
-          dry_run=True,
+          dry_run=False,
       )
 
       run_workload >> wait_for_workload_start >> run_node_interruption

@@ -10,7 +10,6 @@ from dags.common.vm_resource import DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
 from xlml.utils import log_explorer
-from xlml.utils import xpk
 from xlml.utils import orbax
 
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
@@ -90,7 +89,7 @@ with models.DAG(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name="maxtext_phase2_chkpt_save",
+            test_name=f"{name_prefix}-{model_name}",
             run_model_cmds=workload_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
@@ -107,7 +106,7 @@ with models.DAG(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name="maxtext_phase2_chkpt_test-cleanup",
+            test_name=f"{name_prefix}-cleanup",
             run_model_cmds=cleanup_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
