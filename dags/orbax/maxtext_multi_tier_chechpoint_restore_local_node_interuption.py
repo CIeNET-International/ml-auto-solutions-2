@@ -24,21 +24,21 @@ with models.DAG(
         "multi_tier_p2_chkpt_restore_local_node_interuption",
         "nightly",
     ],
-    start_date=datetime.datetime(2025, 6, 17),
+    start_date=datetime.datetime(2025, 6, 18),
     catchup=False,
     concurrency=2,
 ) as dag:
-  base_output_directory = (
-      f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_sav01_save_local"
-  )
-  docker_images = [(
-      SetupMode.NIGHTLY,
-      DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
-  )]
+  base_output_directory = f"{gcs_bucket.ERNIE_BASE_OUTPUT_DIR}/maxtext_multi_tier_res09_node_interuption"
+  docker_images = [
+      (
+          SetupMode.NIGHTLY,
+          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+      )
+  ]
   ram_disk = "/local"
   test_configs = {"v5p-128": [2]}
-  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER}
-  step = 100
+  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER_ERNIE_CIENET}
+  step = 500
   local_checkpoint_period = 20
   replicator_backup_interval_minutes = 1
   use_replicator = "True"
@@ -52,7 +52,7 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.ERNIE_BASE_OUTPUT_DIR.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "800000Mi",
@@ -61,13 +61,15 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.ERNIE_BASE_OUTPUT_DIR.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "800000Mi",
         )
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
-        run_name = f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}_{run_time}"
+        run_name = (
+            f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}_{run_time}"
+        )
         workload_command = (
             "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
             "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
@@ -81,21 +83,21 @@ with models.DAG(
             f"run_name={run_name}",
         )
 
-        start_time = xpk.generate_timestamp()
+        start_time = log_explorer.generate_timestamp()
 
         # make launch test_name unique
         maxtext_phase2_chkpt_test = gke_config.get_gke_config(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name=f"maxtext_phase2_chkpt_save",
+            test_name="maxtext_phase2_chkpt_save",
             run_model_cmds=workload_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
-        ).run(
+        ).run_with_node_interruption(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 
@@ -105,18 +107,18 @@ with models.DAG(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name=f"maxtext_phase2_chkpt_test-cleanup",
+            test_name="maxtext_phase2_chkpt_test-cleanup",
             run_model_cmds=cleanup_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 
-        end_time = xpk.generate_timestamp()
+        end_time = log_explorer.generate_timestamp()
         vali_step = step - 1
         vali_step_list = [
             i for i in range(0, vali_step, local_checkpoint_period)

@@ -72,6 +72,7 @@ class Project(enum.Enum):
   CIENET_CMCS = "cienet-cmcs"
   CIENET_C5 = "cienet-549295"
 
+
 class ImageProject(enum.Enum):
   """Common image projects for GPU."""
 
@@ -271,6 +272,13 @@ class XpkClusters:
       project=Project.CIENET_CMCS.value,
       zone=Zone.US_EAST5_A.value,
   )
+  TPU_V5P_128_CLUSTER_ERNIE_CIENET = XpkClusterConfig(
+      name="ernie-v5p-128",
+      device_version=TpuVersion.V5P,
+      core_count=128,
+      project=Project.CIENET_CMCS.value,
+      zone=Zone.US_EAST5_A.value,
+  )
   TPU_V5E_256_CLUSTER = XpkClusterConfig(
       name="v5e-256-bodaborg-europe-west4",
       device_version=TpuVersion.V5E,
@@ -338,10 +346,13 @@ class XpkClusters:
 
 class DockerImage(enum.Enum):
   """Common docker images."""
+
   XPK_JAX_TEST = "gcr.io/cloud-ml-auto-solutions/xpk_jax_test:latest"
   ORBAX_STABLE_TEMPLATED_RUNNER = "gcr.io/cienet-cmcs/severus-runner:latest"
   ORBAX_STABLE_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
-  ORBAX_LATEST_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-latest-pure-runner:latest"
+  ORBAX_LATEST_PURE_RUNNER = (
+      "gcr.io/cienet-cmcs/orbax-latest-pure-runner:latest"
+  )
   PYTORCH_NIGHTLY = (
       "us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/"
       f"xla:nightly_3.10_tpuvm_{datetime.datetime.today().strftime('%Y%m%d')}"
@@ -384,9 +395,7 @@ class DockerImage(enum.Enum):
       "gcr.io/tpu-prod-env-multipod/maxdiffusion_stable_stack_candidate:"
       f"{datetime.datetime.today().strftime('%Y-%m-%d')}"
   )
-  MAXTEXT_TPU_JAX_NIGHTLY = (
-      "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
-  )
+  MAXTEXT_TPU_JAX_NIGHTLY = "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
   MAXTEXT_GPU_JAX_PINNED = (
       "gcr.io/tpu-prod-env-multipod/maxtext_gpu_jax_pinned:"
       f"{datetime.datetime.today().strftime('%Y-%m-%d')}"

@@ -8,6 +8,11 @@ from xlml.utils import gcs
 
 
 @task
+def generate_timestamp():
+  return datetime.now(timezone.utc)
+
+
+@task
 def validate_log_exist(
     project_id: str,
     location: str,
@@ -45,7 +50,7 @@ def validate_log_exist(
     return log_list
   else:
     raise AirflowFailException()
-  
+
 
 @task
 def validate_log_with_gcs(

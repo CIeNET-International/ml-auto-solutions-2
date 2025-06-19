@@ -189,7 +189,8 @@ def _list_workload_pods(
 
 
 def _get_pods(
-    core_api: k8s_client.CoreV1Api, namespace: str, 
+    core_api: k8s_client.CoreV1Api,
+    namespace: str,
 ) -> k8s_client.V1PodList:
   """List all pods for the given namespace."""
   pods = core_api.list_namespaced_pod(
@@ -197,44 +198,45 @@ def _get_pods(
   )
   return pods
 
+
 def _find_target_pod_node(
     project_id: str,
     region: str,
     cluster_name: str,
     workload_id: str,
 ) -> str:
+  """find the node name for the workload."""
   core_api = _get_core_api_client(project_id, region, cluster_name)
-  pods = _get_workload_job(core_api, workload_id)
+  pods = _list_workload_pods(core_api, workload_id)
   pod_node_pairs = []
   pattern = re.compile(r".*slice-job-(\d+)-(\d+)-\w+")
-  
+
   for pod in pods.items:
-      if pod.status.phase == "Running" and pod.spec.node_name:
-          if pattern.match(pod.metadata.name):
-              pod_node_pairs.append((pod.metadata.name, pod.spec.node_name))
-              
-  """Find the pod with the highest slice and pod numbers."""
+    if pod.status.phase == "Running" and pod.spec.node_name:
+      if pattern.match(pod.metadata.name):
+        pod_node_pairs.append((pod.metadata.name, pod.spec.node_name))
+
+  # Find the pod with the highest slice and pod numbers.
   def extract_numbers(pod_name: str) -> Tuple[int, int]:
-      """Extract slice and pod numbers from pod name."""
-      match = re.search(r'slice-job-(\d+)-(\d+)-', pod_name)
-      if match:
-          return int(match.group(1)), int(match.group(2))
-      return (0, 0)
-  
+    """Extract slice and pod numbers from pod name."""
+    match = re.search(r"slice-job-(\d+)-(\d+)-", pod_name)
+    if match:
+      return int(match.group(1)), int(match.group(2))
+    return (0, 0)
+
   # Sort by slice number, then by pod number, and get the last (highest) one
   sorted_pairs = sorted(pod_node_pairs, key=lambda x: extract_numbers(x[0]))
   target_pod, target_node = sorted_pairs[-1]
-  
+
   logging.info("Identified Pod for node deletion:")
   logging.info(f"  Pod Name:   {target_pod}")
   logging.info(f"  Node Name:  {target_node}")
   logging.info("-" * 72)
-  
+
   return target_node
 
-def _list_mtc_pods(
-    core_api: k8s_client.CoreV1Api
-) -> k8s_client.V1PodList:
+
+def _list_mtc_pods(core_api: k8s_client.CoreV1Api) -> k8s_client.V1PodList:
   """List all pods for thecsi Driver"""
   logging.info(f"Getting pods from CSI MTC Driver")
   pods = core_api.list_namespaced_pod(
@@ -315,13 +317,15 @@ def validate_restoring_from_gcs_or_local(
     cluster_name: str,
     ramdisk_dir: str,
 ) -> bool:
-  """Check the EMC is restoring from Bucket or from local Dir """
+  """Check the EMC is restoring from Bucket or from local Dir"""
 
   # Just give a little more time for testing only.
   time.sleep(30)
   core_api = _get_core_api_client(project_id, region, cluster_name)
   pods_mtc = _list_mtc_pods(core_api)
-  if any(pod.status.phase in ["Pending","Terminating"] for pod in pods_mtc.items):
+  if any(
+      pod.status.phase in ["Pending", "Terminating"] for pod in pods_mtc.items
+  ):
     logging.info("Some of the pods is still pending. Waiting to start")
     return False
   try:
@@ -329,15 +333,16 @@ def validate_restoring_from_gcs_or_local(
       raise AirflowFailException(f"Bad pod phase. One of the pods Is in Failed")
   finally:
     # Checking MTC  pod event when restoring pod
-    logging.info("PODS",pods_mtc.items)
+    logging.info("PODS", pods_mtc.items)
     if all(pod.status.phase in ["Running"] for pod in pods_mtc.items):
       logging.info("HERE")
 
-      #Select randomly one pod to check the local ramdisk
-      for i in range(len(pods_mtc.items)-1):
+      # Select randomly one pod to check the local ramdisk
+      for i in range(len(pods_mtc.items) - 1):
         logs_mtc = core_api.read_namespaced_pod_log(
-            name=pods_mtc.items[i].metadata.name, namespace=pods_mtc.items[i].metadata.namespace,
-            container="replication-worker"
+            name=pods_mtc.items[i].metadata.name,
+            namespace=pods_mtc.items[i].metadata.namespace,
+            container="replication-worker",
         )
 
         # Check is restoring from Bucket
@@ -345,12 +350,13 @@ def validate_restoring_from_gcs_or_local(
         check_mtc_pods = []
         result = parser_util.check_restore_from_mtc(logs_from_mtc_pod=logs_mtc)
         check_mtc_pods.append(result)
-        logging.info("MTC pods ==========>",check_mtc_pods)
+        logging.info("MTC pods ==========>", check_mtc_pods)
 
         # If the result contains 'steps' means that worker pod and MTC pod restore step match.
         if all(check_mtc_pods):
           return True
     return False
+
 
 @task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
 def check_local_ramdisk(
@@ -376,14 +382,17 @@ def check_local_ramdisk(
   for pod in pods.items:
     # Need to be imporved so it can compare steps with csid driver
     if pod.status.phase == "Running":
-      response = _execute_command_in_pod(core_api=core_api, pod=pod, command=cmd)
+      response = _execute_command_in_pod(
+          core_api=core_api, pod=pod, command=cmd
+      )
       files = response.strip().split("\n")
       logging.info("Files ===> ", files)
       if len(files) > 0:
         for file in files:
           if file.endswith(".data"):
             return True
-      
+
+
 @task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
 def run_interruption_cmd(
     task_id: str,
@@ -557,6 +566,7 @@ def clean_up_workload(
         result.exit_code == 0
     ), f"XPK clean-up failed with code {result.exit_code}"
 
+
 @task
 def validate_gcs_checkpoint_p2(output_path):
   hook = GCSHook()
@@ -575,10 +585,11 @@ def validate_gcs_checkpoint_p2(output_path):
         return True
   return False
 
+
 @task
 def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
   core_api = _get_core_api_client(project_id, region, cluster_name)
-  pods = _get_pods(core_api, 'gke-managed-checkpointing')
+  pods = _get_pods(core_api, "gke-managed-checkpointing")
   if any(pod.status.phase in ["Pending"] for pod in pods.items):
     logging.info("Some of the pods is still pending. Waiting to start")
     return False
@@ -586,8 +597,13 @@ def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
   cmd = ["bash", "-c", f"ls /local/tmpfs/client/"]
   for pod in pods.items:
     # Need to be imporved so it can compare steps with csid driver
-    if pod.status.phase == "Running" and "multitier-driver" in pod.metadata.name:
-      response = _execute_command_in_pod(core_api=core_api, pod=pod, command=cmd, container='csi')
+    if (
+        pod.status.phase == "Running"
+        and "multitier-driver" in pod.metadata.name
+    ):
+      response = _execute_command_in_pod(
+          core_api=core_api, pod=pod, command=cmd, container="csi"
+      )
       files = response.strip().split("\n")
       logging.info("Files ===> ", files)
       if len(files) > 0:
@@ -598,47 +614,41 @@ def validate_csi_checkpoint(project_id: str, region: str, cluster_name: str):
 
 
 @task
-def generate_timestamp():
-  return datetime.now(timezone.utc)
-
-@task
 def delete_node(
-  project_id: str,
-  region: str,
-  cluster_name: str,
-  workload_id: str,
-  zone: str,
-  project: str,
-  dry_run: bool = False
+    cluster_name: str,
+    workload_id: str,
+    zone: str,
+    project: str,
+    dry_run: bool = False,
 ) -> None:
-  
+  """Delete node."""
   node_name = _find_target_pod_node(
-    project_id,
-    region,
-    cluster_name,
-    workload_id,
+      project,
+      zone[:-2],
+      cluster_name,
+      workload_id,
   )
-  """Delete the specified compute instance."""
+  """ Delete the specified compute instance."""
   if dry_run:
-      logging.info(f"DRY RUN: Would delete node: {node_name}"
-                   f"in zone: {zone} (project: {project})")
-      return
-  
+    logging.info(
+        f"DRY RUN: Would delete node: {node_name}"
+        f"in zone: {zone} (project: {project})"
+    )
+    return
+
   logging.info(f"Proceeding to delete node: {node_name}")
   try:
-      # Initialize the Compute Engine client
-      instances_client = compute_v1.InstancesClient()
-      
-      # Delete the instance
-      operation = instances_client.delete(
-          project=project,
-          zone=zone,
-          instance=node_name
-      )
-      
-      logging.info(f"Deletion operation started for node: {node_name}")
-      logging.info(f"Operation: {operation.name}")
-      logging.info(f"Deletion command executed for node: {node_name}")
+    # Initialize the Compute Engine client
+    instances_client = compute_v1.InstancesClient()
+
+    # Delete the instance
+    operation = instances_client.delete(
+        project=project, zone=zone, instance=node_name
+    )
+
+    logging.info(f"Deletion operation started for node: {node_name}")
+    logging.info(f"Operation: {operation.name}")
+    logging.info(f"Deletion command executed for node: {node_name}")
   except Exception as e:
-      logging.info(f"Error deleting node {node_name}: {e}", file=sys.stderr)
-      sys.exit(1)
+    logging.info(f"Error deleting node {node_name}: {e}", file=sys.stderr)
+    sys.exit(1)
