@@ -403,7 +403,7 @@ def delete_node(
 
 
 @task
-def simple_sleep(sleep_seconds: int):
+def simple_sleep(sleep_seconds: int) -> None:
   """
   A simple task that pauses execution for a specified number of seconds
   using time.sleep().
@@ -428,3 +428,4 @@ def simple_sleep(sleep_seconds: int):
   logging.info(
       f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds."
   )
+  return
