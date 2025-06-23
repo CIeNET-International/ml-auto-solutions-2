@@ -15,15 +15,15 @@ from xlml.utils import orbax
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_res09_restore_local_node_interuption",
+    dag_id="maxtext_multi_tier_res10_restore_gcs_node_interuption",
     schedule_interval=SCHEDULE,
     tags=[
         "multipod_team",
         "maxtext",
-        "multi_tier_p2_chkpt_restore_local_node_interuption",
+        "multi_tier_p2_chkpt_restore_gcs_node_interuption",
         "nightly",
     ],
-    start_date=datetime.datetime(2025, 6, 18),
+    start_date=datetime.datetime(2025, 6, 23),
     catchup=False,
     concurrency=2,
 ) as dag:
@@ -98,6 +98,7 @@ with models.DAG(
             mtc_enabled=True,
             xpk_branch="develop",
             skip_post_process=True,
+            last_node=True,
         )
 
         # cleanup run: unique test_name
@@ -118,20 +119,32 @@ with models.DAG(
         )
 
         end_time = log_explorer.generate_timestamp()
-        vali_step = step - 1
-        vali_step_list = [
-            i for i in range(0, vali_step, local_checkpoint_period)
-        ]
-        vali_step_list.append(vali_step)
+        bucket_name = f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/{run_name}"
+        validate_gcs_bucket_save_step = (
+            log_explorer.validate_gcs_checkpoint_save(
+                project_id=clusters[accelerator].project,
+                location=clusters[accelerator].zone[:-2],
+                cluster_name=clusters[accelerator].name,
+                text_filter="Successful: backup for step",
+                namespace="gke-managed-checkpointing",
+                container_name="replication-worker",
+                pod_pattern="multitier-driver",
+                start_time=start_time,
+                end_time=end_time,
+                bucket_name=bucket_name,
+            )
+        )
 
-        validate_log = log_explorer.validate_log_with_step(
+        validate_gcs_bucket_restore_file = log_explorer.validate_log_exist(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
-            text_filter="Finished asynchronous save `(blocking` `+` `background)` in",
+            text_filter="copy backup/gcs/ to local/client/",
+            namespace="gke-managed-checkpointing",
+            container_name="replication-worker",
+            pod_pattern="multitier-driver",
             start_time=start_time,
             end_time=end_time,
-            vali_step_list=vali_step_list,
         )
 
         (
@@ -141,5 +154,6 @@ with models.DAG(
             >> maxtext_phase2_chkpt_test
             >> ram_disk_cleanup
             >> end_time
-            >> validate_log
+            >> validate_gcs_bucket_save_step
+            >> validate_gcs_bucket_restore_file
         )

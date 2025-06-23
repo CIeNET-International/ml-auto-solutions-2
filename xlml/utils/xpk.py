@@ -29,6 +29,7 @@ from dags.common.vm_resource import GpuVersion
 from typing import Tuple
 import sys
 import re
+import time
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
 MAIN_BRANCH = "v0.4.1"
@@ -365,6 +366,7 @@ def delete_node(
     zone: str,
     project: str,
     dry_run: bool = False,
+    last_node: bool = False,
 ) -> None:
   """Delete node."""
   node_name = _find_target_pod_node(
@@ -372,6 +374,7 @@ def delete_node(
       zone[:-2],
       cluster_name,
       workload_id,
+      last_node,
   )
   # Delete the specified compute instance.
   if dry_run:
@@ -397,3 +400,31 @@ def delete_node(
   except Exception as e:
     logging.info(f"Error deleting node {node_name}: {e}", file=sys.stderr)
     sys.exit(1)
+
+
+@task
+def simple_sleep(sleep_seconds: int):
+  """
+  A simple task that pauses execution for a specified number of seconds
+  using time.sleep().
+
+  Note: This task occupies a worker slot for the entire sleep duration.
+  It is not a sensor and does not use the 'poke' or 'reschedule' mechanism.
+
+  Args:
+      sleep_seconds: The number of seconds the task should sleep.
+  """
+  if sleep_seconds < 0:
+    logging.warning(
+        f"Requested sleep time is negative: {sleep_seconds}. Skipping sleep."
+    )
+    return  # Or raise an error, depending on desired behavior
+  logging.info(
+      f"Simple Sleep Task: Starting sleep for {sleep_seconds} seconds."
+  )
+  # --- The sleep happens here ---
+  time.sleep(sleep_seconds)
+  # -----------------------------
+  logging.info(
+      f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds."
+  )

@@ -1,16 +1,105 @@
-"""Utilities to get workloads logs and some utils."""
-
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
 from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from absl import logging
+from xlml.utils import gcs
 
 
 @task
 def generate_timestamp():
   return datetime.now(timezone.utc)
+
+
+@task
+def validate_log_exist(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct."""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  log_list = []
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      log_list.append(payload_str)
+      for line in payload_str.split("\n"):
+        logging.info(f"├─ Timestamp: {entry.timestamp}")
+        logging.info("└─ Payload:")
+        logging.info(f"   {line}")
+  if not log_list:
+    raise AirflowFailException("The log history is empty!")
+  logging.info("Validate success")
+  return log_list
+
+
+@task
+def validate_gcs_checkpoint_save(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    bucket_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct."""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  find_str = "backup/gcs/"
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      for line in payload_str.split("\n"):
+        start_index = line.find(find_str)
+        if start_index != -1:
+          folder_index = start_index + len(find_str)
+          gcs_checkpoint_path = line[folder_index:]
+          if gcs_checkpoint_path is not None:
+            logging.info(f"validate path: {gcs_checkpoint_path}")
+            bucket_files = gcs.get_gcs_files(
+                f"{bucket_name}/{gcs_checkpoint_path}/"
+            )
+            checkpoint_validation = False
+            if len(bucket_files) > 0:
+              for file in bucket_files:
+                if ".data" in file:
+                  checkpoint_validation = True
+            if not checkpoint_validation:
+              raise AirflowFailException(
+                  f"Checkpoint files can not found in {gcs_checkpoint_path}"
+              )
+  return True
 
 
 @task
@@ -26,24 +115,7 @@ def validate_log_with_step(
     end_time: Optional[datetime] = None,
     vali_step_list: Optional[list] = None,
 ) -> bool:
-  """
-  Validate the workload log is training correct
-  Args:
-      project_id: The Google Cloud project ID
-      location: GKE cluster location
-      cluster_name: GKE cluster name
-      namespace: Kubernetes namespace (defaults to "default")
-      pod_pattern: Pattern to match pod names (defaults to "*")
-      container_name: Optional container name to filter logs
-      text_filter: Optional comma-separated string to
-      filter log entries by textPayload content
-      start_time: Optional start time for log retrieval
-      (defaults to 12 hours ago)
-      end_time: Optional end time for log retrieval (defaults to now)
-      vali_step_list: optional to validate list of steps
-  Returns:
-      bool: validate success or not
-  """
+  """Validate the workload log is training correct."""
   entries = list_log_entries(
       project_id=project_id,
       location=location,
@@ -59,18 +131,17 @@ def validate_log_with_step(
     return False
   new_step_list = []
   for entry in entries:
-    if not entry.payload:
-      continue
-    payload_str = str(entry.payload)
-    for line in payload_str.split("\n"):
-      if vali_step_list is not None:
-        for step in vali_step_list:
-          vali_str = "seconds to /local/" + str(step)
-          if vali_str in line and step not in new_step_list:
-            logging.info(f"├─ Timestamp: {entry.timestamp}")
-            logging.info("└─ Payload:")
-            logging.info(f"   {line}")
-            new_step_list.append(step)
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      for line in payload_str.split("\n"):
+        if vali_step_list is not None:
+          for step in vali_step_list:
+            vali_str = "seconds to /local/" + str(step)
+            if vali_str in line and step not in new_step_list:
+              logging.info(f"├─ Timestamp: {entry.timestamp}")
+              logging.info("└─ Payload:")
+              logging.info(f"   {line}")
+              new_step_list.append(step)
   if len(vali_step_list) == len(new_step_list):
     logging.info("Validate success")
     return True

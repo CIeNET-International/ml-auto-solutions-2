@@ -302,6 +302,7 @@ class XpkTask(BaseTask):
       ramdisk_directory: str = "",
       mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
+      last_node: bool = False,
   ) -> DAGNode:
     """Run a test job within a docker image.
 
@@ -322,6 +323,7 @@ class XpkTask(BaseTask):
           ramdisk_directory,
           mtc_enabled,
           xpk_branch,
+          last_node,
       )
       if not skip_post_process:
         run_model >> self.post_process(gcs_path)
@@ -396,6 +398,7 @@ class XpkTask(BaseTask):
       ramdisk_directory: str = "",
       mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
+      last_node: bool = False,
   ) -> DAGNode:
     """Run the TPU/GPU test in `task_test_config` using xpk.
       Different behaviour for testing node interruption.
@@ -427,6 +430,7 @@ class XpkTask(BaseTask):
               ramdisk_directory,
               mtc_enabled,
               xpk_branch,
+              last_node,
           )
       )
 
@@ -507,6 +511,7 @@ class XpkTask(BaseTask):
       ramdisk_directory: str = "",
       mtc_enabled: bool = False,
       xpk_branch: str = xpk.MAIN_BRANCH,
+      last_node: bool = False,
   ) -> DAGNode:
     """Create the workload and wait for it to provision."""
     with TaskGroup(group_id="launch_workload_with_interruption") as group:
@@ -538,6 +543,11 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
       )
+      sleep_time = 600
+
+      delay_delete_node = xpk.simple_sleep(
+          sleep_seconds=sleep_time,
+      )
       run_node_interruption = xpk.delete_node.override(
           owner=self.task_test_config.task_owner
       )(
@@ -546,9 +556,15 @@ class XpkTask(BaseTask):
           cluster_name=self.task_test_config.cluster_name,
           workload_id=workload_id,
           dry_run=False,
+          last_node=last_node,
       )
 
-      run_workload >> wait_for_workload_start >> run_node_interruption
+      (
+          run_workload
+          >> wait_for_workload_start
+          >> delay_delete_node
+          >> run_node_interruption
+      )
       return group
 
   def post_process(self, result_location: Optional[str] = None) -> DAGNode:
@@ -685,7 +701,12 @@ class GpuCreateResourceTask(BaseTask):
 
   def provision_via_existing_instance(
       self,
-  ) -> Tuple[DAGNode, airflow.XComArg, airflow.XComArg, airflow.XComArg,]:
+  ) -> Tuple[
+      DAGNode,
+      airflow.XComArg,
+      airflow.XComArg,
+      airflow.XComArg,
+  ]:
     """Provision an existing GPU accelerator.
 
     Returns:
