@@ -28,3 +28,4 @@ BASE_OUTPUT_DIR = "gs://ml-auto-solutions/output"
 # For further question reach out to  Multi-tier Checkpointing Owners.
 MTC_BUCKET = "gs://mtc-bucket-us-east5/output"
 MTC_AUTOMATION_BUCKET = "gs://mtc-automation-bucket"
+CAMILO_OUTPUT_DIR  = "gs://camilo-orbax-bucket"
