@@ -29,6 +29,7 @@ from dags.common.vm_resource import GpuVersion
 from typing import Tuple
 import sys
 import re
+import time
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
 MAIN_BRANCH = "v0.4.1"
@@ -72,7 +73,6 @@ def is_valid_gpu_version(accelerator_type: str):
 @task
 def generate_workload_id(benchmark_id: str) -> str:
   """Generate a valid workload ID."""
-  import re
 
   short_id = str(uuid.uuid4())[:8]
   # Remove all non-alphanumeric characters, and truncate to ensure the result
@@ -419,6 +419,7 @@ def delete_node(
     zone: str,
     project: str,
     dry_run: bool = False,
+    last_node: bool = False,
 ) -> None:
   """Delete node."""
   node_name = _find_target_pod_node(
@@ -426,6 +427,7 @@ def delete_node(
       zone[:-2],
       cluster_name,
       workload_id,
+      last_node,
   )
   # Delete the specified compute instance.
   if dry_run:
@@ -451,3 +453,81 @@ def delete_node(
   except Exception as e:
     logging.info(f"Error deleting node {node_name}: {e}", file=sys.stderr)
     sys.exit(1)
+
+
+@task
+def simple_sleep(sleep_seconds: int) -> None:
+  """
+  A simple task that pauses execution for a specified number of seconds
+  using time.sleep().
+
+  Note: This task occupies a worker slot for the entire sleep duration.
+  It is not a sensor and does not use the 'poke' or 'reschedule' mechanism.
+
+  Args:
+      sleep_seconds: The number of seconds the task should sleep.
+  """
+  if sleep_seconds < 0:
+    logging.warning(
+        f"Requested sleep time is negative: {sleep_seconds}. Skipping sleep."
+    )
+    return  # Or raise an error, depending on desired behavior
+  logging.info(
+      f"Simple Sleep Task: Starting sleep for {sleep_seconds} seconds."
+  )
+  # --- The sleep happens here ---
+  time.sleep(sleep_seconds)
+  # -----------------------------
+  logging.info(
+      f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds."
+  )
+  return
+
+
+@task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
+def wait_for_training_step_complete(
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    step: str,
+    polling_time: int = 20,
+) -> bool:
+  """Restore workload from specific step and calculate elapsed time."""
+  start_time = time.monotonic()  # Record the start time
+
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+
+  try:
+    while True:
+      pods = _list_workload_pods(core_api, workload_id)
+      if any(pod.status.phase in ["Failed", "Unknown"] for pod in pods.items):
+        elapsed_time = time.monotonic() - start_time
+        logging.error(
+            f"Bad pod phase. Sensor failed after {elapsed_time:.2f} seconds."
+        )
+        raise AirflowFailException("Bad pod phase")
+
+      if all(pod.status.phase in ["Running"] for pod in pods.items):
+        # Pick last one running pod
+        pod = pods.items[len(pods.items) - 1]
+        logs = core_api.read_namespaced_pod_log(
+            name=pod.metadata.name, namespace=pod.metadata.namespace
+        )
+        logging.info(f"Logs for pod {pod.metadata.name}:")
+        for line in logs.split("\n"):
+          logging.info(line)
+
+        if f"completed step: {step}" in logs:
+          elapsed_time = time.monotonic() - start_time
+          logging.info(
+              f"Stop training at step {step}. Sensor completed successfully in {elapsed_time:.2f} seconds."
+          )
+          return True
+      time.sleep(polling_time)
+  except Exception as e:
+    elapsed_time = time.monotonic() - start_time
+    logging.error(
+        f"An unexpected error occurred: {e}. Sensor failed after {elapsed_time:.2f} seconds."
+    )
+    raise

@@ -1,3 +1,5 @@
+"""The utils for workload operation."""
+
 from absl import logging
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
@@ -6,8 +8,6 @@ from kubernetes.client.rest import ApiException
 from xlml.utils import gke
 import yaml
 import time
-
-# --- Utility Functions ---
 
 
 def _get_custom_objects_api_client(

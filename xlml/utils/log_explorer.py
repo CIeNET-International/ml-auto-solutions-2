@@ -1,4 +1,4 @@
-"""Utilities to get workloads logs and some utils."""
+"""Utilities to get log and relative function."""
 
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
@@ -7,24 +7,103 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from absl import logging
 import re
+from xlml.utils import gcs
+
+
 
 @task
 def generate_timestamp():
   return datetime.now(timezone.utc)
 
-# Check the namespace if "default" -> Check the steps() Phase1 else "gke-...." validate
-# save or restore , also check the files are correct depending Phase1 or Phase2
+@task
+def validate_log_exist(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct."""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  log_list = []
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      log_list.append(payload_str)
+      for line in payload_str.split("\n"):
+        logging.info(f"├─ Timestamp: {entry.timestamp}")
+        logging.info("└─ Payload:")
+        logging.info(f"   {line}")
+  if not log_list:
+    raise AirflowFailException("The log history is empty!")
+  logging.info("Validate success")
+  return log_list
 
-# Case namespace is Default:
-  # log = log_entry_builder(entries)
-  #log.validate() -->  Call inside validate_steps()
-# Case namespace is  gke ....
-  # log = log_entry_builder(entries)
-  #log.validate() --> Called inside validate steps with pod_pattern=* and
-  # namespace=default, then check csi driver to find the files end with .data and hash
 
-# log = log_entry_builder(entries)
-# log.validate(vali_step_list)
+@task
+def validate_gcs_checkpoint_save(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    bucket_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct."""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  find_str = "backup/gcs/"
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      for line in payload_str.split("\n"):
+        start_index = line.find(find_str)
+        if start_index != -1:
+          folder_index = start_index + len(find_str)
+          gcs_checkpoint_path = line[folder_index:]
+          if gcs_checkpoint_path is not None:
+            logging.info(f"validate path: {gcs_checkpoint_path}")
+            bucket_files = gcs.get_gcs_files(
+                f"{bucket_name}/{gcs_checkpoint_path}/"
+            )
+            checkpoint_validation = False
+            if len(bucket_files) > 0:
+              for file in bucket_files:
+                if ".data" in file:
+                  checkpoint_validation = True
+            if not checkpoint_validation:
+              raise AirflowFailException(
+                  f"Checkpoint files can not found in {gcs_checkpoint_path}"
+              )
+  return True
+
 
 @task
 def validate_log_with_step(
@@ -58,6 +137,7 @@ def validate_log_with_step(
   Returns:
       bool: validate success or not
   """
+  """Validate the workload log is training correct."""
   entries = list_log_entries(
       project_id=project_id,
       location=location,
@@ -73,18 +153,17 @@ def validate_log_with_step(
     return False
   new_step_list = []
   for entry in entries:
-    if not entry.payload:
-      continue
-    payload_str = str(entry.payload)
-    for line in payload_str.split("\n"):
-      if vali_step_list is not None:
-        for step in vali_step_list:
-          vali_str = "seconds to /local/" + str(step)
-          if vali_str in line and step not in new_step_list:
-            logging.info(f"├─ Timestamp: {entry.timestamp}")
-            logging.info("└─ Payload:")
-            logging.info(f"   {line}")
-            new_step_list.append(step)
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      for line in payload_str.split("\n"):
+        if vali_step_list is not None:
+          for step in vali_step_list:
+            vali_str = "seconds to /local/" + str(step)
+            if vali_str in line and step not in new_step_list:
+              logging.info(f"├─ Timestamp: {entry.timestamp}")
+              logging.info("└─ Payload:")
+              logging.info(f"   {line}")
+              new_step_list.append(step)
   if len(vali_step_list) == len(new_step_list):
     logging.info("Validate success")
     return True
@@ -118,7 +197,6 @@ def validate_by_file_extension(
       start_time=start_time,
       end_time=end_time,
   )
-  logging.info(f"========================= ENTRIES FOR MTC POD: {expected_phase} ============================")
   for entry in mtc_pods_entries:
     if not entry.payload:
       continue
