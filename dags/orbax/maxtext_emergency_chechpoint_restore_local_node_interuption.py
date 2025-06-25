@@ -27,7 +27,9 @@ with models.DAG(
     catchup=False,
     concurrency=2,
 ) as dag:
-  base_output_directory = f"{gcs_bucket.CAMILO_OUTPUT_DIR}/maxtext_multi_tier_res09_node_interuption_phase2"
+  base_output_directory = (
+      f"{gcs_bucket.CAMILO_OUTPUT_DIR}/maxtext_emergency_res09_node_interuption"
+  )
   docker_images = [
       (
           SetupMode.NIGHTLY,
