@@ -543,10 +543,15 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
       )
-      sleep_time = 600
-
-      delay_delete_node = xpk.simple_sleep(
-          sleep_seconds=sleep_time,
+      polling_time = 20
+      step = "100"
+      wait_for_delete_node = xpk.wait_for_training_step_complete(
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+          cluster_name=self.task_test_config.cluster_name,
+          workload_id=workload_id,
+          step=step,
+          polling_time=polling_time,
       )
       run_node_interruption = xpk.delete_node.override(
           owner=self.task_test_config.task_owner
@@ -562,7 +567,7 @@ class XpkTask(BaseTask):
       (
           run_workload
           >> wait_for_workload_start
-          >> delay_delete_node
+          >> wait_for_delete_node
           >> run_node_interruption
       )
       return group
