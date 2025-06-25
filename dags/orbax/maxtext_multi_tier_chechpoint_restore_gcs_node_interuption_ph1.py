@@ -15,33 +15,32 @@ from xlml.utils import orbax
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_res09_restore_local_node_interuption_phase2",
+    dag_id="maxtext_multi_tier_res10_restore_gcs_node_interuption",
     schedule_interval=SCHEDULE,
     tags=[
         "multipod_team",
         "maxtext",
-        "multi_tier_p2_chkpt_restore_local_node_interuption",
+        "multi_tier_p2_chkpt_restore_gcs_node_interuption",
         "nightly",
     ],
-    start_date=datetime.datetime(2025, 6, 18),
+    start_date=datetime.datetime(2025, 6, 23),
     catchup=False,
     concurrency=2,
 ) as dag:
-  base_output_directory = f"{gcs_bucket.CAMILO_OUTPUT_DIR}/maxtext_multi_tier_res09_node_interuption_phase2"
+  base_output_directory = f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_res09_node_interuption"
   docker_images = [
       (
           SetupMode.NIGHTLY,
-          DockerImage.MAXTEXT_STABLE_SEVERUS,
+          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
       )
   ]
   ram_disk = "/local"
-  test_configs = {"v5p-64": [4]}
-  clusters = {"v5p-64": XpkClusters.TPU_V5P_128_CLUSTER_CIENET}
-  step = 500
-  local_checkpoint_period = 40
+  test_configs = {"v5p-64": [2]}
+  clusters = {"v5p-64": XpkClusters.TPU_V5P_64_CLUSTER}
+  step = 300
+  local_checkpoint_period = 20
   replicator_backup_interval_minutes = 30
-  use_replicator = "true"
-  name_prefix = "mxtx-ph2"
+  use_replicator = "False"
   model_name = "llama2-7b"
 
   for mode, image in docker_images:
@@ -51,7 +50,7 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.CAMILO_OUTPUT_DIR.split("gs://")[1],
+            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "200000Mi",
@@ -60,18 +59,18 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.CAMILO_OUTPUT_DIR.split("gs://")[1],
+            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "200000Mi",
         )
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
         run_name = (
-            f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}-{run_time}"
+            f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}_{run_time}"
         )
         workload_command = (
-            "export TPU_PREMAPPED_BUFFER_SIZE=26843545600 && "
-            "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=26843545600&& "
+            "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
+            "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
             "python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
             f"global_parameter_scale=1 base_output_directory={base_output_directory} "
             f"dataset_type=synthetic steps={step} per_device_batch_size=1 "
@@ -98,6 +97,7 @@ with models.DAG(
             mtc_enabled=True,
             xpk_branch="develop",
             skip_post_process=True,
+            last_node=True,
         )
 
         # cleanup run: unique test_name
@@ -118,37 +118,32 @@ with models.DAG(
         )
 
         end_time = log_explorer.generate_timestamp()
-        vali_step = step - 1
-        vali_step_list = [
-            i for i in range(0, vali_step, local_checkpoint_period)
-        ]
-        vali_step_list.append(vali_step)
+        bucket_name = f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/{run_name}"
+        validate_gcs_bucket_save_step = (
+            log_explorer.validate_gcs_checkpoint_save(
+                project_id=clusters[accelerator].project,
+                location=clusters[accelerator].zone[:-2],
+                cluster_name=clusters[accelerator].name,
+                text_filter="Successful: backup for step",
+                namespace="gke-managed-checkpointing",
+                container_name="replication-worker",
+                pod_pattern="multitier-driver",
+                start_time=start_time,
+                end_time=end_time,
+                bucket_name=bucket_name,
+            )
+        )
 
-        validate_log_by_steps = log_explorer.validate_log_with_step(
+        validate_gcs_bucket_restore_file = log_explorer.validate_log_exist(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
-            text_filter="Finished asynchronous save `(blocking` `+` `background)` in",
+            text_filter="copy backup/gcs/ to local/client/",
+            namespace="gke-managed-checkpointing",
+            container_name="replication-worker",
+            pod_pattern="multitier-driver",
             start_time=start_time,
             end_time=end_time,
-            vali_step_list=vali_step_list,
-        )
-        validate_is_restoring = log_explorer.validate_log_exist(
-            project_id=clusters[accelerator].project,
-            location=clusters[accelerator].zone[:-2],
-            cluster_name=clusters[accelerator].name,
-            text_filter="'event_type': 'restore'",
-            start_time=start_time,
-            end_time=end_time,
-        )
-        validate_log_by_file_extension = log_explorer.validate_by_file_extension(
-            project_id=clusters[accelerator].project,
-            location=clusters[accelerator].zone[:-2],
-            cluster_name=clusters[accelerator].name,
-            start_time=start_time,
-            end_time=end_time,
-            text_filter="lrwxrwxrwx",
-            expected_phase="phase2",
         )
 
         (
@@ -158,7 +153,6 @@ with models.DAG(
             >> maxtext_phase2_chkpt_test
             >> ram_disk_cleanup
             >> end_time
-            >> validate_log_by_steps
-            >> validate_is_restoring
-            >> validate_log_by_file_extension
+            >> validate_gcs_bucket_save_step
+            >> validate_gcs_bucket_restore_file
         )

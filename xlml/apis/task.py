@@ -543,7 +543,6 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
       )
-# <<<<<<< res09-restore-local-node-interruption
       wait_to_reach_step_to_interrupt = xpk.wait_for_reach_step_to_interrupt(
           task_id="wait_to_reach_step_to_interrupt",
           workload_id=workload_id,
@@ -551,17 +550,6 @@ class XpkTask(BaseTask):
           region=self.task_gcp_config.zone[:-2],
           cluster_name=self.task_test_config.cluster_name,
           step_to_interrupt="40",
-
-#       polling_time = 20
-#       step = "40"
-#       wait_for_delete_node = xpk.wait_for_training_step_complete(
-#           project_id=self.task_gcp_config.project_name,
-#           region=self.task_gcp_config.zone[:-2],
-#           cluster_name=self.task_test_config.cluster_name,
-#           workload_id=workload_id,
-#           step=step,
-#           polling_time=polling_time,
-# >>>>>>> ready-to-merge
       )
       run_node_interruption = xpk.delete_node.override(
           owner=self.task_test_config.task_owner
