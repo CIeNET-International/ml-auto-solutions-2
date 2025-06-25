@@ -55,6 +55,9 @@ def get_xpk_setup_cmd(tmpdir, branch: str = MAIN_BRANCH):
   cmds = [
       "set -xue",
       clone_branch,
+      f"cd {tmpdir}/xpk/src/xpk",
+      "sed -i '/validate_dependencies()/s/^/#/' main.py",
+      "cat main.py",
       "pip install ruamel.yaml docker",
   ]
   return cmds
@@ -124,6 +127,12 @@ def run_workload(
       workload_create_cmd += f" --ramdisk-directory={ramdisk_directory}"
     if mtc_enabled:
       workload_create_cmd += " --mtc-enabled"
+    # For Orbax DAG
+    if ramdisk_directory and mtc_enabled:
+      workload_create_cmd = workload_create_cmd.replace(
+          " --restart-on-user-code-failure", ""
+      )
+      workload_create_cmd += " --max-restarts=1000"
 
     # If using a valid GPU and the XPK branch is set to "main", then branch is switch to "v0.4.1".
     if is_valid_gpu_version(accelerator_type) and xpk_branch == MAIN_BRANCH:
@@ -261,6 +270,51 @@ def wait_for_workload_start(
   print(f"Found {len(pods.items)} pods for workload {workload_id}")
   return len(pods.items) > 0
 
+@task.sensor(poke_interval=120, timeout=3600, mode="reschedule")
+def wait_for_reach_step_to_interrupt(
+    task_id: str,
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    step_to_interrupt: str,
+) -> bool:
+  """
+  Watch any given training pod, check the given step is already reach before
+  deleting a node
+  """
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+  pods = _list_workload_pods(core_api, workload_id)
+
+  if any(pod.status.phase in ["Pending"] for pod in pods.items):
+    logging.info("Some of the pods is still pending. Waiting to start")
+    return False
+
+  try:
+    for pod in pods.items:
+      if pod.status.phase == "Failed":
+        # Don't keep retrying if the pod has failed
+        raise AirflowFailException(f"Bad pod phase: {pod.status.phase}")
+      elif pod.status.phase in ["Unknown"]:
+        raise RuntimeError(f"Bad pod phase: {pod.status.phase}")
+  finally:
+    if all(pod.status.phase in ["Running"] for pod in pods.items):
+
+      # Pick last one running pod
+      pod = pods.items[len(pods.items) - 1]
+      logs = core_api.read_namespaced_pod_log(
+          name=pod.metadata.name, namespace=pod.metadata.namespace
+      )
+
+      # Just to debug TO BE DELETED
+      logging.info(f"Logs for pod {pod.metadata.name}:")
+      for line in logs.split("\n"):
+        logging.info(line)
+      if f"completed step: {step_to_interrupt}" in logs:
+        # Here we return true because we are sure the step "step_to_interrupt" is already save
+        logging.info("The step to be interrupt is {step_to_interrupt}")
+        return True
+  return False
 
 @task.sensor(poke_interval=60, timeout=600, mode="reschedule")
 def wait_for_workload_completion(

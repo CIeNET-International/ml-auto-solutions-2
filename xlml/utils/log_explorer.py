@@ -6,12 +6,25 @@ from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from absl import logging
-
+import re
 
 @task
 def generate_timestamp():
   return datetime.now(timezone.utc)
 
+# Check the namespace if "default" -> Check the steps() Phase1 else "gke-...." validate
+# save or restore , also check the files are correct depending Phase1 or Phase2
+
+# Case namespace is Default:
+  # log = log_entry_builder(entries)
+  #log.validate() -->  Call inside validate_steps()
+# Case namespace is  gke ....
+  # log = log_entry_builder(entries)
+  #log.validate() --> Called inside validate steps with pod_pattern=* and
+  # namespace=default, then check csi driver to find the files end with .data and hash
+
+# log = log_entry_builder(entries)
+# log.validate(vali_step_list)
 
 @task
 def validate_log_with_step(
@@ -27,7 +40,8 @@ def validate_log_with_step(
     vali_step_list: Optional[list] = None,
 ) -> bool:
   """
-  Validate the workload log is training correct
+  Task to validate the expected steps corresponds with the actual training steps
+  observed during the training.
   Args:
       project_id: The Google Cloud project ID
       location: GKE cluster location
@@ -79,6 +93,92 @@ def validate_log_with_step(
         f"{len(vali_step_list)} saves are expected,"
         f"but got {len(new_step_list)}"
     )
+
+@task
+def validate_by_file_extension(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    expected_phase: str = "phase1",
+) -> bool:
+  """
+  Task to validate the file extension restore/ save is correct depending on which Phase is the test related
+  """
+  mtc_pods_entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace="gke-managed-checkpointing",
+      pod_pattern="*",
+      container_name="replication-worker",
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  logging.info(f"========================= ENTRIES FOR MTC POD: {expected_phase} ============================")
+  for entry in mtc_pods_entries:
+    if not entry.payload:
+      continue
+    payload_str = str(entry.payload)
+    if expected_phase == "phase2":
+      logging.info("Enter phase 2")
+      for line in payload_str.split("\n"):
+          pattern = r'"(D[0-9a-fA-F]+\.data)"'
+          match = re.search(pattern, line)
+          if match:
+            logging.info(f"├─ Timestamp: {entry.timestamp}")
+            logging.info("└─ Payload:")
+            logging.info(f"   {line}")
+            file_name = match.group(1)
+            logging.info(f"Found .data file: {file_name} it means that is phase2")
+            return True
+    elif expected_phase == "phase1":
+      return True
+    else:
+      return False
+  return False
+
+@task
+def validate_log_exist(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct"""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  log_list = []
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      log_list.append(payload_str)
+      for line in payload_str.split("\n"):
+        logging.info(f"---Timestamp: {entry.timestamp}")
+        logging.info("---Payload:")
+        logging.info(f"   {line}")
+  if len(log_list) > 0:
+    logging.info("Validate success")
+    return log_list
+  else:
+    raise AirflowFailException()
 
 
 def list_log_entries(

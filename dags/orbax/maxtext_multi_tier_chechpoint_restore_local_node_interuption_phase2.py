@@ -15,7 +15,7 @@ from xlml.utils import orbax
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_res09_restore_local_node_interuption",
+    dag_id="maxtext_multi_tier_res09_restore_local_node_interuption_phase2",
     schedule_interval=SCHEDULE,
     tags=[
         "multipod_team",
@@ -27,21 +27,21 @@ with models.DAG(
     catchup=False,
     concurrency=2,
 ) as dag:
-  base_output_directory = f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_res09_node_interuption"
+  base_output_directory = f"{gcs_bucket.CAMILO_OUTPUT_DIR}/maxtext_multi_tier_res09_node_interuption_phase2"
   docker_images = [
       (
           SetupMode.NIGHTLY,
-          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+          DockerImage.MAXTEXT_STABLE_SEVERUS,
       )
   ]
   ram_disk = "/local"
-  test_configs = {"v5p-128": [2]}
-  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER}
+  test_configs = {"v5p-64": [4]}
+  clusters = {"v5p-64": XpkClusters.TPU_V5P_128_CLUSTER_CIENET}
   step = 500
-  local_checkpoint_period = 20
-  replicator_backup_interval_minutes = 1
-  use_replicator = "False"
-  name_prefix = "maxtext_phase2_chkpt_save"
+  local_checkpoint_period = 40
+  replicator_backup_interval_minutes = 30
+  use_replicator = "true"
+  name_prefix = "mxtx-ph2"
   model_name = "llama2-7b"
 
   for mode, image in docker_images:
@@ -51,27 +51,27 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.CAMILO_OUTPUT_DIR.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
-            "800000Mi",
+            "200000Mi",
         )
         apply_cpc = orbax.apply_cpc(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.CAMILO_OUTPUT_DIR.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
-            "800000Mi",
+            "200000Mi",
         )
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
         run_name = (
-            f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}_{run_time}"
+            f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}-{run_time}"
         )
         workload_command = (
-            "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
-            "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
+            "export TPU_PREMAPPED_BUFFER_SIZE=26843545600 && "
+            "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=26843545600&& "
             "python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
             f"global_parameter_scale=1 base_output_directory={base_output_directory} "
             f"dataset_type=synthetic steps={step} per_device_batch_size=1 "
@@ -124,7 +124,7 @@ with models.DAG(
         ]
         vali_step_list.append(vali_step)
 
-        validate_log = log_explorer.validate_log_with_step(
+        validate_log_by_steps = log_explorer.validate_log_with_step(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
@@ -132,6 +132,23 @@ with models.DAG(
             start_time=start_time,
             end_time=end_time,
             vali_step_list=vali_step_list,
+        )
+        validate_is_restoring = log_explorer.validate_log_exist(
+            project_id=clusters[accelerator].project,
+            location=clusters[accelerator].zone[:-2],
+            cluster_name=clusters[accelerator].name,
+            text_filter="'event_type': 'restore'",
+            start_time=start_time,
+            end_time=end_time,
+        )
+        validate_log_by_file_extension = log_explorer.validate_by_file_extension(
+            project_id=clusters[accelerator].project,
+            location=clusters[accelerator].zone[:-2],
+            cluster_name=clusters[accelerator].name,
+            start_time=start_time,
+            end_time=end_time,
+            text_filter="lrwxrwxrwx",
+            expected_phase="phase2",
         )
 
         (
@@ -141,5 +158,7 @@ with models.DAG(
             >> maxtext_phase2_chkpt_test
             >> ram_disk_cleanup
             >> end_time
-            >> validate_log
+            >> validate_log_by_steps
+            >> validate_is_restoring
+            >> validate_log_by_file_extension
         )
