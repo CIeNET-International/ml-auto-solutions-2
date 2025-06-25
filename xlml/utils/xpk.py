@@ -429,3 +429,52 @@ def simple_sleep(sleep_seconds: int) -> None:
       f"Simple Sleep Task: Finished sleeping after {sleep_seconds} seconds."
   )
   return
+
+
+@task.sensor(poke_interval=120, timeout=1200, mode="reschedule")
+def wait_for_training_step_complete(
+    project_id: str,
+    region: str,
+    cluster_name: str,
+    workload_id: str,
+    step: str,
+    polling_time: int = 20,
+) -> bool:
+  """Restore workload from specific step and calculate elapsed time."""
+  start_time = time.monotonic()  # Record the start time
+
+  core_api = _get_core_api_client(project_id, region, cluster_name)
+
+  try:
+    while True:
+      pods = _list_workload_pods(core_api, workload_id)
+      if any(pod.status.phase in ["Failed", "Unknown"] for pod in pods.items):
+        elapsed_time = time.monotonic() - start_time
+        logging.error(
+            f"Bad pod phase. Sensor failed after {elapsed_time:.2f} seconds."
+        )
+        raise AirflowFailException("Bad pod phase")
+
+      if all(pod.status.phase in ["Running"] for pod in pods.items):
+        # Pick last one running pod
+        pod = pods.items[len(pods.items) - 1]
+        logs = core_api.read_namespaced_pod_log(
+            name=pod.metadata.name, namespace=pod.metadata.namespace
+        )
+        logging.info(f"Logs for pod {pod.metadata.name}:")
+        for line in logs.split("\n"):
+          logging.info(line)
+
+        if f"completed step: {step}" in logs:
+          elapsed_time = time.monotonic() - start_time
+          logging.info(
+              f"Stop training at step {step}. Sensor completed successfully in {elapsed_time:.2f} seconds."
+          )
+          return True
+      time.sleep(polling_time)
+  except Exception as e:
+    elapsed_time = time.monotonic() - start_time
+    logging.error(
+        f"An unexpected error occurred: {e}. Sensor failed after {elapsed_time:.2f} seconds."
+    )
+    raise
