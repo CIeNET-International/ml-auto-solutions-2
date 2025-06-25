@@ -1,3 +1,5 @@
+"""Utilities to get log and relative function."""
+
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
 from google.cloud import logging as log_explorer

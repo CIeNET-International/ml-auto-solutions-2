@@ -70,7 +70,6 @@ def is_valid_gpu_version(accelerator_type: str):
 @task
 def generate_workload_id(benchmark_id: str) -> str:
   """Generate a valid workload ID."""
-  import re
 
   short_id = str(uuid.uuid4())[:8]
   # Remove all non-alphanumeric characters, and truncate to ensure the result
