@@ -23,19 +23,30 @@ with models.DAG(
         "multi_tier_p2_chkpt_save_local",
         "nightly",
     ],
+<<<<<<< sav01-save-local
+    start_date=datetime.datetime(2025, 6, 12),
+=======
     start_date=datetime.datetime(2025, 6, 27),
+>>>>>>> res02-restore-gcs
     catchup=False,
     concurrency=2,
 ) as dag:
   base_output_directory = (
       f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_sav01_save_local"
   )
+<<<<<<< sav01-save-local
+  docker_images = [(
+      SetupMode.NIGHTLY,
+      DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+  )]
+=======
   docker_images = [
       (
           SetupMode.NIGHTLY,
           DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
       )
   ]
+>>>>>>> res02-restore-gcs
   ram_disk = "/local"
   test_configs = {"v5p-128": [2]}
   clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER}
@@ -43,8 +54,13 @@ with models.DAG(
   local_checkpoint_period = 20
   replicator_backup_interval_minutes = 1
   use_replicator = "True"
+<<<<<<< sav01-save-local
+  name_prefix = "maxtext_phase2_chkpt_save"
+  model_name = "llama2-7b"
+=======
   model_name = "llama2-7b"
   name_prefix = f"maxtext_{model_name}_chkpt_save"
+>>>>>>> res02-restore-gcs
 
   for mode, image in docker_images:
     for accelerator, slices in test_configs.items():
