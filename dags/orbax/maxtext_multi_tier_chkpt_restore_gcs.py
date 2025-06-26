@@ -44,15 +44,24 @@ with models.DAG(
   replicator_backup_interval_minutes = 1
   use_replicator = "True"
   model_name = "llama2-7b"
-  name_prefix = f"maxtext_{model_name}_chkpt_save"
+  name_prefix = f"maxtext_{model_name}_chkpt_restore"
 
   for mode, image in docker_images:
     for accelerator, slices in test_configs.items():
       for slice_num in slices:
-        run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
-        run_name = (
-            f"maxtext-phase2-chkpt-test-{slice_num}x-{accelerator}-{run_time}"
+        cpc = (
+            clusters[accelerator].project,
+            clusters[accelerator].zone[:-2],
+            clusters[accelerator].name,
+            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            "ct5p-hightpu-4t",
+            "google.com/tpu",
+            "800000Mi",
         )
+        delete_cpc = orbax.delete_cpc(*cpc)
+        apply_cpc = orbax.apply_cpc(*cpc)
+        run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
+        run_name = f"{name_prefix}-{slice_num}x-{accelerator}_{run_time}"
         bucket_name = f"{gcs_bucket.BASE_OUTPUT_DIR}/{run_name}"
         workload_command = (
             "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
@@ -81,14 +90,14 @@ with models.DAG(
 
         workload_id = xpk.generate_workload_id(f"{run_name}")
 
-        start_time = xpk.generate_timestamp()
+        start_time = log_explorer.generate_timestamp()
 
         # make launch test_name unique
         maxtext_phase2_chkpt_test = gke_config.get_gke_config(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name=f"maxtext_phase2_chkpt_save",
+            test_name=f"{name_prefix}",
             run_model_cmds=workload_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
@@ -106,7 +115,7 @@ with models.DAG(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name=f"maxtext_phase2_chkpt_test-cleanup",
+            test_name=f"{name_prefix}-cleanup",
             run_model_cmds=cleanup_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
@@ -117,7 +126,7 @@ with models.DAG(
             skip_post_process=True,
         )
 
-        end_time = xpk.generate_timestamp()
+        end_time = log_explorer.generate_timestamp()
         validate_gcs_bucket_save_step = log_explorer.validate_log_with_gcs(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
@@ -131,13 +140,13 @@ with models.DAG(
             bucket_name=bucket_name,
         )
 
-        restore_start_time = xpk.generate_timestamp()
+        restore_start_time = log_explorer.generate_timestamp()
 
         maxtext_phase2_chkpt_restore = gke_config.get_gke_config(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name=f"maxtext_phase2_chkpt_restore",
+            test_name=f"{name_prefix}_restore",
             run_model_cmds=workload_command_restore,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
@@ -155,7 +164,7 @@ with models.DAG(
             num_slices=slice_num,
             cluster=clusters[accelerator],
             time_out_in_min=60,
-            test_name=f"maxtext_phase2_chkpt_test-cleanup2",
+            test_name=f"{name_prefix}-cleanup2",
             run_model_cmds=cleanup_command,
             docker_image=image.value,
             test_owner=test_owner.ERNIE_C,
@@ -166,7 +175,7 @@ with models.DAG(
             skip_post_process=True,
         )
 
-        restore_end_time = xpk.generate_timestamp()
+        restore_end_time = log_explorer.generate_timestamp()
 
         validate_gcs_bucket_restore_step = log_explorer.validate_log_exist(
             project_id=clusters[accelerator].project,

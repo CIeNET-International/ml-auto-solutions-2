@@ -1,10 +1,12 @@
 """Utilities to get workloads logs and some utils."""
+
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
 from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from absl import logging
+from xlml.utils import gcs
 
 
 @task
@@ -90,7 +92,7 @@ def validate_log_with_gcs(
           gcs_checkpoint_path = line[folder_index:]
           if gcs_checkpoint_path is not None:
             logging.info(f"get gcs path from: {gcs_checkpoint_path}")
-            bucket_files = gcs.validate_gcs_checkpoint_p2(
+            bucket_files = gcs.get_gcs_checkpoint(
                 f"{bucket_name}/{gcs_checkpoint_path}/"
             )
             checkpoint_validation = False
@@ -173,14 +175,14 @@ def validate_log_with_step(
             logging.info("└─ Payload:")
             logging.info(f"   {line}")
             new_step_list.append(step)
-  if len(vali_step_list) == len(new_step_list):
-    logging.info("Validate success")
-    return True
-  else:
+  if len(vali_step_list) != len(new_step_list):
     raise AirflowFailException(
         f"{len(vali_step_list)} saves are expected,"
         f"but got {len(new_step_list)}"
     )
+
+  logging.info("Validate success")
+  return True
 
 
 def list_log_entries(
