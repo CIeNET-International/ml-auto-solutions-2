@@ -6,6 +6,10 @@ from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from absl import logging
+<<<<<<< sav01-save-local
+=======
+from xlml.utils import gcs
+>>>>>>> res02-restore-gcs
 
 
 @task
@@ -14,6 +18,111 @@ def generate_timestamp():
 
 
 @task
+<<<<<<< sav01-save-local
+=======
+def validate_log_exist(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct"""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  log_list = []
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      log_list.append(payload_str)
+      for line in payload_str.split("\n"):
+        logging.info(f"├─ Timestamp: {entry.timestamp}")
+        logging.info("└─ Payload:")
+        logging.info(f"   {line}")
+  if len(log_list) > 0:
+    logging.info("Validate success")
+    return log_list
+  else:
+    raise AirflowFailException("The log history is empty!")
+
+
+@task
+def validate_log_with_gcs(
+    project_id: str,
+    location: str,
+    cluster_name: str,
+    bucket_name: str,
+    namespace: str = "default",
+    pod_pattern: str = "*",
+    container_name: Optional[str] = None,
+    text_filter: Optional[str] = None,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> bool:
+  """Validate the workload log is training correct"""
+  entries = list_log_entries(
+      project_id=project_id,
+      location=location,
+      cluster_name=cluster_name,
+      namespace=namespace,
+      pod_pattern=pod_pattern,
+      container_name=container_name,
+      text_filter=text_filter,
+      start_time=start_time,
+      end_time=end_time,
+  )
+  find_str = " to backup/gcs/"
+  find_step = "step "
+  gcs_save_step_list = []
+  for entry in entries:
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      for line in payload_str.split("\n"):
+        start_index = line.find(find_str)
+        if start_index != -1:
+          folder_index = start_index + len(find_str)
+          gcs_checkpoint_path = line[folder_index:]
+          if gcs_checkpoint_path is not None:
+            logging.info(f"get gcs path from: {gcs_checkpoint_path}")
+            bucket_files = gcs.get_gcs_checkpoint(
+                f"{bucket_name}/{gcs_checkpoint_path}/"
+            )
+            checkpoint_validation = False
+            logging.info(f"gcs bucket files: {bucket_files}")
+            if len(bucket_files) > 0:
+              for file in bucket_files:
+                if ".data" in file:
+                  checkpoint_validation = True
+            if not checkpoint_validation:
+              raise AirflowFailException(
+                  f"Checkpoint files can not found in {gcs_checkpoint_path}"
+              )
+            step_index = line.find(find_step)
+            if step_index != -1:
+              step_number_index = step_index + len(find_step)
+              step = line[step_number_index:start_index]
+              if step not in gcs_save_step_list:
+                gcs_save_step_list.append(int(step))
+  if not gcs_save_step_list:
+    return False
+  return max(gcs_save_step_list)
+
+
+@task
+>>>>>>> res02-restore-gcs
 def validate_log_with_step(
     project_id: str,
     location: str,
@@ -44,6 +153,10 @@ def validate_log_with_step(
   Returns:
       bool: validate success or not
   """
+<<<<<<< sav01-save-local
+=======
+  """Validate the workload log is training correct"""
+>>>>>>> res02-restore-gcs
   entries = list_log_entries(
       project_id=project_id,
       location=location,
@@ -71,15 +184,25 @@ def validate_log_with_step(
             logging.info("└─ Payload:")
             logging.info(f"   {line}")
             new_step_list.append(step)
+<<<<<<< sav01-save-local
   if len(vali_step_list) == len(new_step_list):
     logging.info("Validate success")
     return True
   else:
+=======
+  if len(vali_step_list) != len(new_step_list):
+>>>>>>> res02-restore-gcs
     raise AirflowFailException(
         f"{len(vali_step_list)} saves are expected,"
         f"but got {len(new_step_list)}"
     )
 
+<<<<<<< sav01-save-local
+=======
+  logging.info("Validate success")
+  return True
+
+>>>>>>> res02-restore-gcs
 
 def list_log_entries(
     project_id: str,
