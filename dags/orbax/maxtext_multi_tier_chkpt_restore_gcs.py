@@ -1,6 +1,4 @@
-"""
-A DAG to run MaxText multi-tier checkpointing tests (phase1: save & validate).
-"""
+"""A DAG to run MaxText multi-tier checkpointing tests (phase2: restore & validate)."""
 
 import datetime
 from airflow import models
@@ -9,8 +7,9 @@ from dags.common import test_owner
 from dags.common.vm_resource import DockerImage, XpkClusters
 from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
-from xlml.utils import xpk
 from xlml.utils import log_explorer
+from xlml.utils import orbax
+from xlml.utils import xpk
 
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
@@ -20,28 +19,32 @@ with models.DAG(
     tags=[
         "multipod_team",
         "maxtext",
-        "multi_tier_p2_chkpt_restore_gcs",
+        "multi_tier_chkpt_restore_gcs",
         "nightly",
     ],
-    start_date=datetime.datetime(2025, 6, 6),
+    start_date=datetime.datetime(2025, 6, 25),
     catchup=False,
     concurrency=2,
 ) as dag:
   base_output_directory = (
       f"{gcs_bucket.BASE_OUTPUT_DIR}/maxtext_multi_tier_res02_restore_gcs"
   )
-  docker_images = [(
-      SetupMode.JAX_STABLE_STACK,
-      DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
-  )]
+  docker_images = [
+      (
+          SetupMode.NIGHTLY,
+          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+      )
+  ]
   ram_disk = "/local"
-  test_configs = {"v5p-8": [2]}
-  clusters = {"v5p-8": XpkClusters.TPU_V5P_8_CLUSTER}
+  test_configs = {"v5p-128": [2]}
+  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER}
   step = 200
   restore_step = 300
   local_checkpoint_period = 20
   replicator_backup_interval_minutes = 1
   use_replicator = "True"
+  model_name = "llama2-7b"
+  name_prefix = f"maxtext_{model_name}_chkpt_save"
 
   for mode, image in docker_images:
     for accelerator, slices in test_configs.items():
