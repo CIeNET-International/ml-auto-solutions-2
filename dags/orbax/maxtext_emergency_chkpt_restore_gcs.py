@@ -14,12 +14,12 @@ from xlml.utils import xpk
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
 with models.DAG(
-    dag_id="maxtext_multi_tier_res02_restore_gcs",
+    dag_id="maxtext_emergency_res02_restore_gcs",
     schedule_interval=SCHEDULE,
     tags=[
         "multipod_team",
         "maxtext",
-        "multi_tier_chkpt_restore_gcs",
+        "emergency_chkpt_restore_gcs",
         "nightly",
     ],
     start_date=datetime.datetime(2025, 7, 1),
@@ -27,7 +27,7 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.BASE_OUTPUT_DIR}/maxtext_multi_tier_res02_restore_gcs"
+      f"{gcs_bucket.BASE_OUTPUT_DIR}/maxtext_emergency_res02_restore_gcs"
   )
   docker_images = [
       (
@@ -41,6 +41,7 @@ with models.DAG(
   step = 200
   restore_step = 300
   local_checkpoint_period = 20
+  checkpoint_period = 20
   replicator_backup_interval_minutes = 1
   use_replicator = "True"
   model_name = "llama2-7b"
@@ -69,7 +70,7 @@ with models.DAG(
             "python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
             f"global_parameter_scale=1 base_output_directory={base_output_directory} "
             f"dataset_type=synthetic steps={step} per_device_batch_size=1 "
-            "max_target_length=256 "
+            f"max_target_length=256 checkpoint_period={checkpoint_period} "
             "reuse_example_batch=1 enable_emergency_checkpoint=true "
             f"local_checkpoint_directory={ram_disk} local_checkpoint_period={local_checkpoint_period} "
             f"use_replicator_service={use_replicator} replicator_backup_interval_minutes={replicator_backup_interval_minutes} "
@@ -81,7 +82,7 @@ with models.DAG(
             "python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
             f"global_parameter_scale=1 base_output_directory={base_output_directory} "
             f"dataset_type=synthetic steps={restore_step} per_device_batch_size=1 "
-            "max_target_length=256 "
+            f"max_target_length=256 checkpoint_period={checkpoint_period} "
             "reuse_example_batch=1 enable_emergency_checkpoint=true "
             f"local_checkpoint_directory={ram_disk} local_checkpoint_period={local_checkpoint_period} "
             f"use_replicator_service={use_replicator} replicator_backup_interval_minutes={replicator_backup_interval_minutes} "

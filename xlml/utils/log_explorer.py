@@ -6,10 +6,7 @@ from google.cloud import logging as log_explorer
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from absl import logging
-<<<<<<< sav01-save-local
-=======
 from xlml.utils import gcs
->>>>>>> res02-restore-gcs
 
 
 @task
@@ -18,8 +15,6 @@ def generate_timestamp():
 
 
 @task
-<<<<<<< sav01-save-local
-=======
 def validate_log_exist(
     project_id: str,
     location: str,
@@ -122,7 +117,6 @@ def validate_log_with_gcs(
 
 
 @task
->>>>>>> res02-restore-gcs
 def validate_log_with_step(
     project_id: str,
     location: str,
@@ -153,10 +147,7 @@ def validate_log_with_step(
   Returns:
       bool: validate success or not
   """
-<<<<<<< sav01-save-local
-=======
   """Validate the workload log is training correct"""
->>>>>>> res02-restore-gcs
   entries = list_log_entries(
       project_id=project_id,
       location=location,
@@ -184,25 +175,15 @@ def validate_log_with_step(
             logging.info("└─ Payload:")
             logging.info(f"   {line}")
             new_step_list.append(step)
-<<<<<<< sav01-save-local
-  if len(vali_step_list) == len(new_step_list):
-    logging.info("Validate success")
-    return True
-  else:
-=======
+
   if len(vali_step_list) != len(new_step_list):
->>>>>>> res02-restore-gcs
     raise AirflowFailException(
         f"{len(vali_step_list)} saves are expected,"
         f"but got {len(new_step_list)}"
     )
-
-<<<<<<< sav01-save-local
-=======
   logging.info("Validate success")
   return True
 
->>>>>>> res02-restore-gcs
 
 def list_log_entries(
     project_id: str,
