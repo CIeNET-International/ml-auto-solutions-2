@@ -47,11 +47,10 @@ def validate_log_exist(
         logging.info(f"├─ Timestamp: {entry.timestamp}")
         logging.info("└─ Payload:")
         logging.info(f"   {line}")
-  if len(log_list) > 0:
-    logging.info("Validate success")
-    return log_list
-  else:
+  if not log_list:
     raise AirflowFailException("The log history is empty!")
+  logging.info("Validate success")
+  return log_list
 
 
 @task
@@ -257,6 +256,4 @@ def list_log_entries(
 
   # Retrieve log entries matching the filter
   logging.info(f"Log filter constructed: {log_filter}")
-  entries = logging_client.list_entries(filter_=log_filter)
-
-  return entries
+  return logging_client.list_entries(filter_=log_filter)
