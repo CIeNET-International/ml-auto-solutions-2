@@ -29,18 +29,16 @@ with models.DAG(
 ) as dag:
   base_output_directory = f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_res09_node_interuption"
   docker_images = [
-      (
-          SetupMode.NIGHTLY,
-          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
-      )
+    (SetupMode.STABLE, DockerImage.MAXTEXT_TPU_JAX_STABLE_STACK_CANDIDATE),
   ]
   ram_disk = "/local"
-  test_configs = {"v5p-64": [2]}
+  test_configs = {"v5p-64": [4]}
   clusters = {"v5p-64": XpkClusters.TPU_V5P_64_CLUSTER}
   step = 300
-  local_checkpoint_period = 20
+  local_checkpoint_period = 40
   replicator_backup_interval_minutes = 30
   use_replicator = "False"
+  name_prefix = "mxtx-ph1-res"
   model_name = "llama2-7b"
 
   for mode, image in docker_images:
@@ -53,7 +51,7 @@ with models.DAG(
             gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
-            "200000Mi",
+            "100000Mi",
         )
         apply_cpc = orbax.apply_cpc(
             clusters[accelerator].project,
@@ -62,19 +60,19 @@ with models.DAG(
             gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
-            "200000Mi",
+            "100000Mi",
         )
         run_time = datetime.datetime.now().strftime("%Y-%m-%d-%H")
         run_name = (
             f"{name_prefix}-{model_name}-{slice_num}x-{accelerator}_{run_time}"
         )
         workload_command = (
-            "export TPU_PREMAPPED_BUFFER_SIZE=52428800000 && "
-            "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=52428800000 && "
+            "export TPU_PREMAPPED_BUFFER_SIZE=32212254720 && "
+            "export TPU_PREMAPPED_BUFFER_TRANSFER_THRESHOLD_BYTES=32212254720 && "
             "python3 -m MaxText.train MaxText/configs/base.yml remat_policy=full "
             f"global_parameter_scale=1 base_output_directory={base_output_directory} "
             f"dataset_type=synthetic steps={step} per_device_batch_size=1 "
-            f"max_target_length=256 model_name={model_name} per_device_batch_size=2 "
+            f"max_target_length=256 model_name={model_name} "
             "reuse_example_batch=1 enable_emergency_checkpoint=true "
             f"local_checkpoint_directory={ram_disk} local_checkpoint_period={local_checkpoint_period} "
             f"use_replicator_service={use_replicator} replicator_backup_interval_minutes={replicator_backup_interval_minutes} "
