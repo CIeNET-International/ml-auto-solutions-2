@@ -30,16 +30,18 @@ with models.DAG(
   base_output_directory = (
       f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_sav01_save_local"
   )
-  docker_images = [(
-      SetupMode.NIGHTLY,
-      DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
-  )]
+  docker_images = [
+      (
+          SetupMode.NIGHTLY,
+          DockerImage.MAXTEXT_TPU_JAX_STABLE_STACK_CANDIDATE,
+      )
+  ]
   ram_disk = "/local"
-  test_configs = {"v5p-128": [2]}
-  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER}
+  test_configs = {"v5p-64": [2]}
+  clusters = {"v5p-64": XpkClusters.TPU_V5P_64_CLUSTER}
   step = 100
   local_checkpoint_period = 20
-  replicator_backup_interval_minutes = 1
+  replicator_backup_interval_minutes = 5
   use_replicator = "True"
   name_prefix = "maxtext_phase2_chkpt_save"
   model_name = "llama2-7b"
@@ -87,7 +89,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 
@@ -104,7 +106,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 

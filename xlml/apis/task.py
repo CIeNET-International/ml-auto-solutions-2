@@ -380,6 +380,7 @@ class XpkTask(BaseTask):
           project_id=self.task_gcp_config.project_name,
           zone=self.task_gcp_config.zone,
           cluster_name=self.task_test_config.cluster_name,
+          xpk_branch=xpk_branch,
       )
 
       (
@@ -562,7 +563,12 @@ class XpkTask(BaseTask):
           last_node=last_node,
       )
 
-      run_workload >> wait_for_workload_start >> wait_to_reach_step_to_interrupt>> run_node_interruption
+      (
+          run_workload
+          >> wait_for_workload_start
+          >> wait_to_reach_step_to_interrupt
+          >> run_node_interruption
+      )
       return group
 
   def post_process(self, result_location: Optional[str] = None) -> DAGNode:
