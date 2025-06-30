@@ -1,3 +1,5 @@
+"""Utilities to get workloads logs and some utils."""
+
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
 from google.cloud import logging as log_explorer
@@ -59,6 +61,11 @@ def validate_gcs_checkpoint_save(
 
 
 @task
+def generate_timestamp():
+  return datetime.now(timezone.utc)
+
+
+@task
 def validate_log_with_step(
     project_id: str,
     location: str,
@@ -72,6 +79,24 @@ def validate_log_with_step(
     vali_step_list: Optional[list] = None,
 ) -> bool:
   """Validate the workload log is training correct"""
+  """
+  Validate the workload log is training correct
+  Args:
+      project_id: The Google Cloud project ID
+      location: GKE cluster location
+      cluster_name: GKE cluster name
+      namespace: Kubernetes namespace (defaults to "default")
+      pod_pattern: Pattern to match pod names (defaults to "*")
+      container_name: Optional container name to filter logs
+      text_filter: Optional comma-separated string to
+      filter log entries by textPayload content
+      start_time: Optional start time for log retrieval
+      (defaults to 12 hours ago)
+      end_time: Optional end time for log retrieval (defaults to now)
+      vali_step_list: optional to validate list of steps
+  Returns:
+      bool: validate success or not
+  """
   entries = list_log_entries(
       project_id=project_id,
       location=location,
@@ -83,7 +108,6 @@ def validate_log_with_step(
       start_time=start_time,
       end_time=end_time,
   )
-
   new_step_list = []
   for entry in entries:
     if entry.payload is not None:
@@ -97,11 +121,30 @@ def validate_log_with_step(
               logging.info("└─ Payload:")
               logging.info(f"   {line}")
               new_step_list.append(step)
+  if vali_step_list is None:
+    return False
+  new_step_list = []
+  for entry in entries:
+    if not entry.payload:
+      continue
+    payload_str = str(entry.payload)
+    for line in payload_str.split("\n"):
+      if vali_step_list is not None:
+        for step in vali_step_list:
+          vali_str = "seconds to /local/" + str(step)
+          if vali_str in line and step not in new_step_list:
+            logging.info(f"├─ Timestamp: {entry.timestamp}")
+            logging.info("└─ Payload:")
+            logging.info(f"   {line}")
+            new_step_list.append(step)
   if len(vali_step_list) == len(new_step_list):
     logging.info("Validate success")
     return True
   else:
-    raise AirflowFailException()
+    raise AirflowFailException(
+        f"{len(vali_step_list)} saves are expected,"
+        f"but got {len(new_step_list)}"
+    )
 
 
 def list_log_entries(
@@ -142,8 +185,8 @@ def list_log_entries(
 
   # Create a Logging Client for the specified project
   logging_client = log_explorer.Client(project=project_id)
-
-  # Set the time window for log retrieval: default to last 12 hours if not provided
+  # Set the time window for log retrieval:
+  # default to last 12 hours if not provided
   if end_time is None:
     end_time = datetime.now(timezone.utc)
   if start_time is None:
