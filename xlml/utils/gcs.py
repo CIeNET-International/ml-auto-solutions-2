@@ -3,7 +3,7 @@ import re
 from absl import logging
 
 
-def get_gcs_files(output_path):
+def get_gcs_checkpoint(output_path):
   hook = GCSHook()
   pattern = re.compile(r"^gs://(?P<bucket>[^/]+)/(?P<prefix>.+)$")
   m = pattern.match(output_path)
@@ -13,5 +13,5 @@ def get_gcs_files(output_path):
   logging.info(f"bucket:{bucket_name}")
   logging.info(f"prefix:{prefix}")
   files = hook.list(bucket_name=bucket_name, prefix=prefix)
-  logging.info("Files ===> ", files)
+  logging.info(f"Files ===> {files}")
   return files
