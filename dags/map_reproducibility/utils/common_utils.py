@@ -715,7 +715,8 @@ def get_skip_steps_for_metrics_calculation(config: Config):
 
   # skip profiler steps also
   additional_skip_steps = getattr(config, "profiler_steps", 5)
-  total_skip_steps = base_skip_steps + additional_skip_steps
+  # somehow one more step is influnced by profiler from observation
+  total_skip_steps = base_skip_steps + additional_skip_steps + 1
   logger.info(
       f"Profiler enabled, skipping {total_skip_steps} steps (base: {base_skip_steps}, additional: {additional_skip_steps})"
   )
@@ -732,23 +733,30 @@ def calculate_maxtext_metrics(
   step_time_metrics = metrics["perf/step_time_seconds"]
 
   # Calculate the sliced metrics based on skip values
-  sliced_metrics = step_time_metrics[skip_first:-skip_last]
+  sliced_step_time_metrics = step_time_metrics[skip_first:-skip_last]
 
   # Check if the resulting metrics list is empty and raise an error if it is
-  if not sliced_metrics:
+  if not sliced_step_time_metrics:
     logger.error(
-        f"Empty metrics list after applying skip_first={skip_first} and skip_last={skip_last}. Original metrics length: {len(step_time_metrics)}"
+        f"Empty sliced_step_time_metrics list after applying skip_first={skip_first} and skip_last={skip_last}. Original metrics length: {len(step_time_metrics)}"
     )
 
   # Apply skip_first and skip_last when aggregating
   avg_step_time = metric.aggregate_metrics(
-      sliced_metrics,
+      sliced_step_time_metrics,
       metric_config.AggregationStrategy.AVERAGE,
   )
 
   tflop_per_device_per_sec_metrics = metrics["perf/per_device_tflops_per_sec"]
+  # Apply the same slicing to tflop metrics
+  sliced_tflop_metrics = tflop_per_device_per_sec_metrics[skip_first:-skip_last]
+  if not sliced_tflop_metrics:
+    logger.error(
+        f"Empty sliced_tflop_metrics list after applying skip_first={skip_first} and skip_last={skip_last}. Original metrics length: {len(step_time_metrics)}"
+    )
+
   avg_tflop_per_device_per_sec = metric.aggregate_metrics(
-      tflop_per_device_per_sec_metrics,
+      sliced_tflop_metrics,
       metric_config.AggregationStrategy.AVERAGE,
   )
 
@@ -789,8 +797,13 @@ def get_nemo_metrics_cmds(
 
 def cleanup_all_runs_cmds(cluster, cluster_region, prefix="cml-"):
   cleanup_cmds = (
-      f"echo 'Getting credentials for cluster {cluster}...' && gcloud container clusters get-credentials {cluster} --region {cluster_region} --project {PROJECT} ",
-      f"echo 'Uninstalling jobs with prefix {prefix}...' && JOBS=$(kubectl get job -n default | grep \"^{prefix}\" | awk '{{print $1}}') && if [ -n \"$JOBS\" ]; then echo \"$JOBS\" | xargs -L1 helm uninstall -n default; else echo 'No matching jobs found'; fi",
+      f"echo 'Getting credentials for cluster {cluster}...' && gcloud container clusters get-credentials {cluster} --region {cluster_region} --project {PROJECT}",
+      f"echo 'Uninstalling jobs with prefix {prefix}...' && "
+      f"JOBS=$(kubectl get job -n default | grep '^{prefix}' | awk '{{print $1}}' | sed 's/-workload-0$//' | sort -u) && "
+      f'if [ -n "$JOBS" ]; then '
+      f'echo "$JOBS" | xargs -L1 helm uninstall -n default || true && '
+      f'echo "$JOBS" | xargs -L1 kubectl delete job -n default || true; '
+      f"else echo 'No matching jobs found'; fi",
   )
   return cleanup_cmds
 
@@ -1056,9 +1069,9 @@ def get_cluster(hardware: str = "a3ultra"):
   if hardware == "a3mega":
     return "a3plus-benchmark", "australia-southeast1"
   if hardware == "a3ultra":
-    return "gke-a3ultra-bm-map-3", "europe-west1"
+    return "imo-a3ultra", "europe-west1"
   if hardware == "a4":
-    return "gke-a4-shared", "us-central1"
+    return "gke-a4-sbrg1", "us-east4"
 
 
 def get_scheduled_time(hardware: str, model: str, framework: str):
@@ -1798,6 +1811,7 @@ def run_workload(
     kueue_name: str = None,
     config_model_name: str = None,
     optimizer: Optional[str] = None,
+    workload_type: str = "jobset",
 ):
   with tempfile.TemporaryDirectory() as tmpdir:
     hook = SubprocessHook()
@@ -1882,6 +1896,12 @@ def run_workload(
     else:
       metrics_cmd = ()
 
+    wait_cmd = (
+        wait_for_jobsets_cmds
+        if workload_type == "jobset"
+        else wait_for_jobs_cmds
+    )
+
     result = hook.run_command(
         [
             "bash",
@@ -1904,7 +1924,7 @@ def run_workload(
                     additional_cmds=additional_cmds,
                     num_steps=num_steps,
                 )
-                + wait_for_jobs_cmds()
+                + wait_cmd()
                 + copy_bucket_cmds_workload(
                     recipe_repo_root=recipe_repo_root,
                     tmpdir=tmpdir,
