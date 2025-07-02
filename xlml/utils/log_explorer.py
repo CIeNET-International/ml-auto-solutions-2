@@ -10,10 +10,10 @@ import re
 from xlml.utils import gcs
 
 
-
 @task
 def generate_timestamp():
   return datetime.now(timezone.utc)
+
 
 @task
 def validate_log_exist(
@@ -90,7 +90,7 @@ def validate_gcs_checkpoint_save(
           gcs_checkpoint_path = line[folder_index:]
           if gcs_checkpoint_path is not None:
             logging.info(f"validate path: {gcs_checkpoint_path}")
-            bucket_files = gcs.get_gcs_files(
+            bucket_files = gcs.validate_gcs_checkpoint(
                 f"{bucket_name}/{gcs_checkpoint_path}/"
             )
             checkpoint_validation = False
@@ -173,6 +173,7 @@ def validate_log_with_step(
         f"but got {len(new_step_list)}"
     )
 
+
 @task
 def validate_by_file_extension(
     project_id: str,
@@ -204,59 +205,20 @@ def validate_by_file_extension(
     if expected_phase == "phase2":
       logging.info("Enter phase 2")
       for line in payload_str.split("\n"):
-          pattern = r'"(D[0-9a-fA-F]+\.data)"'
-          match = re.search(pattern, line)
-          if match:
-            logging.info(f"├─ Timestamp: {entry.timestamp}")
-            logging.info("└─ Payload:")
-            logging.info(f"   {line}")
-            file_name = match.group(1)
-            logging.info(f"Found .data file: {file_name} it means that is phase2")
-            return True
+        pattern = r'"(D[0-9a-fA-F]+\.data)"'
+        match = re.search(pattern, line)
+        if match:
+          logging.info(f"├─ Timestamp: {entry.timestamp}")
+          logging.info("└─ Payload:")
+          logging.info(f"   {line}")
+          file_name = match.group(1)
+          logging.info(f"Found .data file: {file_name} it means that is phase2")
+          return True
     elif expected_phase == "phase1":
       return True
     else:
       return False
   return False
-
-@task
-def validate_log_exist(
-    project_id: str,
-    location: str,
-    cluster_name: str,
-    namespace: str = "default",
-    pod_pattern: str = "*",
-    container_name: Optional[str] = None,
-    text_filter: Optional[str] = None,
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
-) -> bool:
-  """Validate the workload log is training correct"""
-  entries = list_log_entries(
-      project_id=project_id,
-      location=location,
-      cluster_name=cluster_name,
-      namespace=namespace,
-      pod_pattern=pod_pattern,
-      container_name=container_name,
-      text_filter=text_filter,
-      start_time=start_time,
-      end_time=end_time,
-  )
-  log_list = []
-  for entry in entries:
-    if entry.payload is not None:
-      payload_str = str(entry.payload)
-      log_list.append(payload_str)
-      for line in payload_str.split("\n"):
-        logging.info(f"---Timestamp: {entry.timestamp}")
-        logging.info("---Payload:")
-        logging.info(f"   {line}")
-  if len(log_list) > 0:
-    logging.info("Validate success")
-    return log_list
-  else:
-    raise AirflowFailException()
 
 
 def list_log_entries(
@@ -297,7 +259,6 @@ def list_log_entries(
 
   # Create a Logging Client for the specified project
   logging_client = log_explorer.Client(project=project_id)
-
   # Set the time window for log retrieval:
   # default to last 12 hours if not provided
   if end_time is None:

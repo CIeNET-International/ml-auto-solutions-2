@@ -270,6 +270,7 @@ def wait_for_workload_start(
   print(f"Found {len(pods.items)} pods for workload {workload_id}")
   return len(pods.items) > 0
 
+
 @task.sensor(poke_interval=120, timeout=3600, mode="reschedule")
 def wait_for_reach_step_to_interrupt(
     task_id: str,
@@ -315,6 +316,7 @@ def wait_for_reach_step_to_interrupt(
         logging.info("The step to be interrupt is {step_to_interrupt}")
         return True
   return False
+
 
 @task.sensor(poke_interval=60, timeout=600, mode="reschedule")
 def wait_for_workload_completion(
