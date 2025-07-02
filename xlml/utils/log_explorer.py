@@ -128,6 +128,7 @@ def validate_log_with_step(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
     vali_step_list: Optional[list] = None,
+    validation_string: Optional[str] = None,
 ) -> bool:
   """
   Task to validate the expected steps corresponds with the actual training steps
@@ -160,23 +161,22 @@ def validate_log_with_step(
       start_time=start_time,
       end_time=end_time,
   )
-  if vali_step_list is None:
+  if validation_string is None or vali_step_list is None:
+    logging.info("Validate input can not found")
     return False
   new_step_list = []
   for entry in entries:
-    if not entry.payload:
-      continue
-    payload_str = str(entry.payload)
-    for line in payload_str.split("\n"):
-      if vali_step_list is not None:
-        for step in vali_step_list:
-          vali_str = "seconds to /local/" + str(step)
-          if vali_str in line and step not in new_step_list:
-            logging.info(f"├─ Timestamp: {entry.timestamp}")
-            logging.info("└─ Payload:")
-            logging.info(f"   {line}")
-            new_step_list.append(step)
-
+    if entry.payload is not None:
+      payload_str = str(entry.payload)
+      for line in payload_str.split("\n"):
+        if vali_step_list is not None:
+          for step in vali_step_list:
+            vali_str = validation_string + str(step)
+            if vali_str in line and step not in new_step_list:
+              logging.info(f"├─ Timestamp: {entry.timestamp}")
+              logging.info("└─ Payload:")
+              logging.info(f"   {line}")
+              new_step_list.append(step)
   if len(vali_step_list) != len(new_step_list):
     raise AirflowFailException(
         f"{len(vali_step_list)} saves are expected,"
