@@ -1,4 +1,4 @@
-"""Utilities to get log and relative function."""
+"""Utilities to get workloads logs and some utils."""
 
 from airflow.decorators import task
 from airflow.exceptions import AirflowFailException
@@ -27,7 +27,7 @@ def validate_log_exist(
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
 ) -> bool:
-  """Validate the workload log is training correct."""
+  """Validate the workload log is training correct"""
   entries = list_log_entries(
       project_id=project_id,
       location=location,
@@ -79,7 +79,9 @@ def validate_gcs_checkpoint_save(
       start_time=start_time,
       end_time=end_time,
   )
-  find_str = "backup/gcs/"
+  find_str = " to backup/gcs/"
+  find_step = "step "
+  gcs_save_step_list = []
   for entry in entries:
     if entry.payload is not None:
       payload_str = str(entry.payload)
@@ -89,11 +91,12 @@ def validate_gcs_checkpoint_save(
           folder_index = start_index + len(find_str)
           gcs_checkpoint_path = line[folder_index:]
           if gcs_checkpoint_path is not None:
-            logging.info(f"validate path: {gcs_checkpoint_path}")
-            bucket_files = gcs.validate_gcs_checkpoint(
+            logging.info(f"get gcs path from: {gcs_checkpoint_path}")
+            bucket_files = gcs.get_gcs_checkpoint(
                 f"{bucket_name}/{gcs_checkpoint_path}/"
             )
             checkpoint_validation = False
+            logging.info(f"gcs bucket files: {bucket_files}")
             if len(bucket_files) > 0:
               for file in bucket_files:
                 if ".data" in file:
@@ -102,7 +105,15 @@ def validate_gcs_checkpoint_save(
               raise AirflowFailException(
                   f"Checkpoint files can not found in {gcs_checkpoint_path}"
               )
-  return True
+            step_index = line.find(find_step)
+            if step_index != -1:
+              step_number_index = step_index + len(find_step)
+              step = line[step_number_index:start_index]
+              if step not in gcs_save_step_list:
+                gcs_save_step_list.append(int(step))
+  if not gcs_save_step_list:
+    return False
+  return max(gcs_save_step_list)
 
 
 @task
@@ -137,7 +148,7 @@ def validate_log_with_step(
   Returns:
       bool: validate success or not
   """
-  """Validate the workload log is training correct."""
+  """Validate the workload log is training correct"""
   entries = list_log_entries(
       project_id=project_id,
       location=location,
@@ -153,25 +164,26 @@ def validate_log_with_step(
     return False
   new_step_list = []
   for entry in entries:
-    if entry.payload is not None:
-      payload_str = str(entry.payload)
-      for line in payload_str.split("\n"):
-        if vali_step_list is not None:
-          for step in vali_step_list:
-            vali_str = "seconds to /local/" + str(step)
-            if vali_str in line and step not in new_step_list:
-              logging.info(f"├─ Timestamp: {entry.timestamp}")
-              logging.info("└─ Payload:")
-              logging.info(f"   {line}")
-              new_step_list.append(step)
-  if len(vali_step_list) == len(new_step_list):
-    logging.info("Validate success")
-    return True
-  else:
+    if not entry.payload:
+      continue
+    payload_str = str(entry.payload)
+    for line in payload_str.split("\n"):
+      if vali_step_list is not None:
+        for step in vali_step_list:
+          vali_str = "seconds to /local/" + str(step)
+          if vali_str in line and step not in new_step_list:
+            logging.info(f"├─ Timestamp: {entry.timestamp}")
+            logging.info("└─ Payload:")
+            logging.info(f"   {line}")
+            new_step_list.append(step)
+
+  if len(vali_step_list) != len(new_step_list):
     raise AirflowFailException(
         f"{len(vali_step_list)} saves are expected,"
         f"but got {len(new_step_list)}"
     )
+  logging.info("Validate success")
+  return True
 
 
 @task
@@ -292,6 +304,4 @@ def list_log_entries(
 
   # Retrieve log entries matching the filter
   logging.info(f"Log filter constructed: {log_filter}")
-  entries = logging_client.list_entries(filter_=log_filter)
-
-  return entries
+  return logging_client.list_entries(filter_=log_filter)

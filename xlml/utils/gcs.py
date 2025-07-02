@@ -3,7 +3,7 @@ import re
 from absl import logging
 
 
-def validate_gcs_checkpoint(output_path):
+def get_gcs_checkpoint(output_path):
   hook = GCSHook()
   pattern = re.compile(r"^gs://(?P<bucket>[^/]+)/(?P<prefix>.+)$")
   m = pattern.match(output_path)
