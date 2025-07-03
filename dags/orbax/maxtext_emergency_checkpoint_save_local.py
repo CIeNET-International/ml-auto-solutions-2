@@ -28,21 +28,21 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_emergency_sav01_save_local"
+      f"{gcs_bucket.ERNIE_BUCKET}/maxtext_emergency_sav01_save_local"
   )
   docker_images = [
       (
-          SetupMode.NIGHTLY,
-          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+          SetupMode.STABLE,
+          DockerImage.ORBAX_STABLE_PURE_RUNNER,
       )
   ]
   ram_disk = "/local"
-  test_configs = {"v5p-8": [2]}
-  clusters = {"v5p-8": XpkClusters.TPU_V5P_128_CLUSTER}
+  test_configs = {"v5p-128": [2]}
+  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER_CIENET}
   step = 100
   local_checkpoint_period = 20
   checkpoint_period = 20
-  replicator_backup_interval_minutes = "1"
+  replicator_backup_interval_minutes = 3
   use_replicator = "False"
   model_name = "llama2-7b"
   name_prefix = f"maxtext_{model_name}_chkpt_save"
@@ -54,7 +54,7 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.ERNIE_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "800000Mi",
@@ -90,7 +90,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 
@@ -107,7 +107,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 

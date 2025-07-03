@@ -9,7 +9,6 @@ from dags.multipod.configs import gke_config
 from dags.multipod.configs.common import SetupMode
 from xlml.utils import log_explorer
 from xlml.utils import orbax
-from xlml.utils import xpk
 
 SCHEDULE = "0 10 * * *" if composer_env.is_prod_env() else None
 
@@ -27,17 +26,17 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_sav02_save_gcs"
+      f"{gcs_bucket.ERNIE_BUCKET}/maxtext_multi_tier_sav02_save_gcs"
   )
   docker_images = [
       (
-          SetupMode.JAX_STABLE_STACK,
-          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+          SetupMode.STABLE,
+          DockerImage.ORBAX_STABLE_PURE_RUNNER,
       )
   ]
   ram_disk = "/local"
-  test_configs = {"v5p-8": [2]}
-  clusters = {"v5p-8": XpkClusters.TPU_V5P_128_CLUSTER}
+  test_configs = {"v5p-128": [2]}
+  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER_CIENET}
   step = 500
   local_checkpoint_period = 20
   replicator_backup_interval_minutes = 5
@@ -52,7 +51,7 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.ERNIE_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "800000Mi",
@@ -120,7 +119,7 @@ with models.DAG(
             pod_pattern="multitier-driver",
             start_time=start_time,
             end_time=end_time,
-            bucket_name=f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/{run_name}",
+            bucket_name=f"{gcs_bucket.ERNIE_BUCKET}/{run_name}",
         )
 
         (

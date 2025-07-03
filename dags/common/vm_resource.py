@@ -264,9 +264,9 @@ class XpkClusters:
       zone=Zone.EUROPE_WEST4_B.value,
   )
   TPU_V5P_128_CLUSTER_CIENET = XpkClusterConfig(
-      name="test-v5p-64",
+      name="ernie-v5p-128",
       device_version=TpuVersion.V5P,
-      core_count=64,
+      core_count=128,
       project="cienet-cmcs",
       zone=Zone.US_EAST5_A.value,
   )
@@ -340,6 +340,7 @@ class DockerImage(enum.Enum):
 
   XPK_JAX_TEST = "gcr.io/cloud-ml-auto-solutions/xpk_jax_test:latest"
   MAXTEXT_STABLE_SEVERUS = "gcr.io/cienet-cmcs/severus-runner:latest"
+  ORBAX_STABLE_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
   PYTORCH_NIGHTLY = (
       "us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/"
       f"xla:nightly_3.10_tpuvm_{datetime.datetime.today().strftime('%Y%m%d')}"

@@ -28,17 +28,17 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_multi_tier_sav01_save_local"
+      f"{gcs_bucket.ERNIE_BUCKET}/maxtext_multi_tier_sav01_save_local"
   )
   docker_images = [
       (
-          SetupMode.NIGHTLY,
-          DockerImage.MAXTEXT_TPU_JAX_STABLE_STACK_CANDIDATE,
+          SetupMode.STABLE,
+          DockerImage.ORBAX_STABLE_PURE_RUNNER,
       )
   ]
   ram_disk = "/local"
-  test_configs = {"v5p-64": [2]}
-  clusters = {"v5p-64": XpkClusters.TPU_V5P_64_CLUSTER}
+  test_configs = {"v5p-128": [2]}
+  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER_CIENET}
   step = 100
   local_checkpoint_period = 20
   replicator_backup_interval_minutes = 5
@@ -53,7 +53,7 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.ERNIE_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "800000Mi",

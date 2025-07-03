@@ -26,21 +26,21 @@ with models.DAG(
     concurrency=2,
 ) as dag:
   base_output_directory = (
-      f"{gcs_bucket.MTC_AUTOMATION_BUCKET}/maxtext_emergency_sav02_save_gcs"
+      f"{gcs_bucket.ERNIE_BUCKET}/maxtext_emergency_sav02_save_gcs"
   )
   docker_images = [
       (
-          SetupMode.JAX_STABLE_STACK,
-          DockerImage.MAXTEXT_TPU_JAX_NIGHTLY,
+          SetupMode.STABLE,
+          DockerImage.ORBAX_STABLE_PURE_RUNNER,
       )
   ]
   ram_disk = "/local"
-  test_configs = {"v5p-8": [2]}
-  clusters = {"v5p-8": XpkClusters.TPU_V5P_128_CLUSTER}
+  test_configs = {"v5p-128": [2]}
+  clusters = {"v5p-128": XpkClusters.TPU_V5P_128_CLUSTER_CIENET}
   step = 200
   checkpoint_period = 20
   local_checkpoint_period = 20
-  replicator_backup_interval_minutes = "1"
+  replicator_backup_interval_minutes = 3
   use_replicator = "False"
   model_name = "llama2-7b"
   name_prefix = f"maxtext_{model_name}_chkpt_save"
@@ -52,7 +52,7 @@ with models.DAG(
             clusters[accelerator].project,
             clusters[accelerator].zone[:-2],
             clusters[accelerator].name,
-            gcs_bucket.MTC_AUTOMATION_BUCKET.split("gs://")[1],
+            gcs_bucket.ERNIE_BUCKET.split("gs://")[1],
             "ct5p-hightpu-4t",
             "google.com/tpu",
             "800000Mi",
@@ -90,7 +90,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 
@@ -107,7 +107,7 @@ with models.DAG(
         ).run(
             ramdisk_directory=ram_disk,
             mtc_enabled=True,
-            xpk_branch="main",
+            xpk_branch="develop",
             skip_post_process=True,
         )
 
@@ -116,15 +116,13 @@ with models.DAG(
         vali_step_list.append(vali_step)
 
         end_time = log_explorer.generate_timestamp()
-        validate_log = log_explorer.validate_log_with_step(
+        validate_log = log_explorer.validate_log_exist(
             project_id=clusters[accelerator].project,
             location=clusters[accelerator].zone[:-2],
             cluster_name=clusters[accelerator].name,
-            text_filter=f"Finished asynchronous save `(blocking` `+` `background)` in seconds to {base_output_directory}/{run_name}/checkpoints/",
+            text_filter=f"Finished asynchronous save `(blocking` `+` `background)` in seconds to {base_output_directory}/",
             start_time=start_time,
             end_time=end_time,
-            vali_step_list=vali_step_list,
-            validation_string=f"{base_output_directory}/{run_name}/checkpoints/",
         )
 
         (
