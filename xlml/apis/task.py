@@ -24,7 +24,7 @@ import airflow
 from airflow.models.taskmixin import DAGNode
 from airflow.utils.task_group import TaskGroup
 from xlml.apis import gcp_config, metric_config, test_config
-from xlml.utils import gpu, metric, name_format, ssh, tpu, xpk, gke
+from xlml.utils import gpu, metric, name_format, ssh, tpu, xpk,axlearn, gke
 
 
 class BaseTask(abc.ABC):
@@ -144,6 +144,128 @@ def run_queued_resource_test(
 
   return test
 
+@dataclasses.dataclass
+class AxlearnTask(BaseTask):
+  """This is a class to set up tasks for TPU/GPU axlearn.
+
+  Attributes:
+    task_test_config: Test configs to run on this TPU/GPU.
+    task_gcp_config: Runtime TPU/GPU creation parameters.
+    task_metric_config: Metric configs to process metrics.
+  """
+  task_test_config: Union[
+      test_config.TpuGkeTest, test_config.GpuXpkTest, test_config.CpuGkeTest
+  ]
+  task_gcp_config: gcp_config.GCPConfig
+  task_metric_config: Optional[metric_config.MetricConfig] = None
+  workload_provision_timeout: datetime.timedelta = datetime.timedelta(
+      minutes=300
+  )
+
+  def run(
+      self,
+      *,
+      gcs_location: Optional[airflow.XComArg] = None,
+  ) -> DAGNode:
+    """Run a test job within a docker image.
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A task group with the following tasks chained: run_model and
+      post_process.
+    """
+    with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
+      run_model, gcs_path = self.run_model(
+          gcs_location,
+          axlearn_branch=axlearn.LALITAH_BRANCH
+      )
+    return group
+
+  def run_model(
+      self,
+      gcs_location: Optional[airflow.XComArg] = None,
+      axlearn_branch: str = "",
+  ) -> DAGNode:
+    """Run the TPU/GPU test in `get_bite_tpu_config` using axlearn.
+
+    Attributes:
+      gcs_location: GCS path for all artifacts of the test.
+      use_vertex_tensorboard: Set to True to view workload data on
+        Vertex AI Tensorboard.
+
+    Returns:
+      A DAG node that executes the model test.
+    """
+    with TaskGroup(group_id="run_model") as group:
+      workload_id = xpk.generate_workload_id(self.task_test_config.benchmark_id)
+      if gcs_location:
+        gcs_path = gcs_location
+      else:
+        gcs_path = name_format.generate_gcs_folder_location(
+            self.task_test_config.gcs_subfolder,
+            self.task_test_config.benchmark_id,
+        )
+      launch_workload = self.launch_workload(
+          workload_id,
+          gcs_path,
+          axlearn_branch,
+      )
+      # wait_for_workload_completion = xpk.wait_for_workload_completion.override(
+      #     timeout=int(self.task_test_config.timeout.total_seconds()),
+      # )(
+      #     workload_id=workload_id,
+      #     project_id=self.task_gcp_config.project_name,
+      #     region=self.task_gcp_config.zone[:-2],
+      #     cluster_name=self.task_test_config.cluster_name,
+      # )
+
+      (
+          (workload_id, gcs_path)
+          >> launch_workload
+          # >> wait_for_workload_completion
+      )
+      return group, gcs_path
+
+  def launch_workload(
+        self,
+        workload_id: str,
+        gcs_path: str,
+        axlearn_branch: str = "",
+    ) -> DAGNode:
+      """Create the workload and wait for it to provision."""
+      with TaskGroup(group_id="launch_workload") as group:
+        run_workload = axlearn.run_workload.override(
+            owner=self.task_test_config.task_owner
+        )(
+            task_id="run_workload",
+            cluster_project=self.task_gcp_config.project_name,
+            zone=self.task_gcp_config.zone,
+            cluster_name=self.task_test_config.cluster_name,
+            run_name="camiloquinones-lal"
+            benchmark_id=self.task_test_config.benchmark_id,
+            workload_id=workload_id,
+            gcs_path=gcs_path,
+            docker_image=self.task_test_config.docker_image,
+            accelerator_type=self.task_test_config.accelerator.name,
+            run_cmds=self.task_test_config.test_script,
+            num_slices=self.task_test_config.num_slices,
+            axlearn_branch=axlearn_branch,
+        )
+        # wait_for_workload_start = xpk.wait_for_workload_start.override(
+        #     timeout=self.workload_provision_timeout.total_seconds()
+        # )(
+        #     workload_id=workload_id,
+        #     project_id=self.task_gcp_config.project_name,
+        #     region=self.task_gcp_config.zone[:-2],
+        #     cluster_name=self.task_test_config.cluster_name,
+        # )
+        run_workload
+        # >> wait_for_workload_start
+        return group
 
 @dataclasses.dataclass
 class XpkTask(BaseTask):
