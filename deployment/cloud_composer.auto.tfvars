@@ -6,7 +6,7 @@ project_config = {
 
 environment_config = [
   {
-    environment_name   = "ml-automation-solutions" # Suggested Naming: <prefix>-ml-dev
-    service_account_id = "ml-auto-solutions-sa" # Suggested Naming: <prefix>-ml-sa
+    environment_name   = "chengken-ml-automation-solutions" # Suggested Naming: <prefix>-ml-dev
+    service_account_id = "chengken-ml-auto-solutions-sa" # Suggested Naming: <prefix>-ml-sa
   }
 ]

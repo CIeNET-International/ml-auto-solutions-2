@@ -5,7 +5,7 @@ provider "google-beta" {
 
 terraform {
   backend "gcs" {
-    bucket = "composer-ml-auto-solutions-tfstate" # Suggested Naming: <prefix>-ml-tfstate
+    bucket = "chengken-composer-ml-auto-solutions-tfstate" # Suggested Naming: <prefix>-ml-tfstate
     prefix = "terraform/state"
   }
 }
