@@ -21,6 +21,7 @@ from dags.multipod.configs.common import SetupMode
 from dags.common.vm_resource import TpuVersion, Zone, RuntimeVersion, Project,DockerImage
 from dags.axlearn.configs import axlearn_config as config
 from airflow.utils.task_group import TaskGroup
+from datetime import timedelta
 
 
 # Run once a day at 6 pm UTC (11 am PST)
@@ -41,16 +42,21 @@ common = {
     'task_owner': "Camilo",
 }
 
+default_args = {
+    "retries": 3,
+    "retry_delay": timedelta(minutes=25),
+}
+
 with models.DAG(
-    dag_id='project_bite_tpu_e2e',
+    dag_id='axlearn_chk_save_gcs',
     schedule=SCHEDULED_TIME,
     tags=[
         'multipod_team',
         'tpu',
         'axlearn',
     ],
-    start_date=datetime.datetime(2024, 4, 4),
     catchup=False,
+    default_args=default_args,
 ) as dag:
   with TaskGroup(
       group_id='axlearn_tpu_training', prefix_group_id=False
@@ -67,7 +73,6 @@ with models.DAG(
     for mode, image in docker_images:
       for accelerator, slices in test_configs.items():
         for slice_num in slices:
-
           # AXLearn head against JAX head
           # Runs Fuji training on v5p-128 in the provided GCP Project
           jax_main_fuji_v5p_8 = config.get_axlearn_tpu_config(
@@ -81,7 +86,7 @@ with models.DAG(
               network='camiloquinones-net',
               subnetwork='camiloquinones-subnet',
               is_tpu_reserved=False,
-              num_slices=2,
+              num_replica=2,
               model_config='fuji-test-v1',
               time_out_in_min=180,
               task_owner="Camilo",

@@ -60,8 +60,8 @@ def get_axlearn_tpu_config(
     model_config: str,
     time_out_in_min: int,
     task_owner: str,
+    num_replica: int,
     is_tpu_reserved: bool = False,
-    num_slices: int = 1,
     project_name: Optional[Project] = Project.CLOUD_ML_AUTO_SOLUTIONS.value,
     network: str = "default",
     subnetwork: str = "default",
@@ -83,26 +83,10 @@ def get_axlearn_tpu_config(
       set_up_cmds=None,
       timeout=datetime.timedelta(minutes=time_out_in_min),
       task_owner=test_owner,
-      num_slices=num_slices,
+      num_slices=num_replica,
       cluster_name=cluster_name,
       docker_image=docker_image,
   )
-  # job_test_config = test_config.TpuVmTest(
-  #     test_config.Tpu(
-  #         version=tpu_version,
-  #         cores=tpu_cores,
-  #         runtime_version=runtime_version,
-  #         reserved=is_tpu_reserved,
-  #         network=network,
-  #         subnetwork=subnetwork,
-  #     ),
-  #     test_name=test_name,
-  #     set_up_cmds=set_up_cmds,
-  #     run_model_cmds=run_model_cmds,
-  #     timeout=datetime.timedelta(minutes=time_out_in_min),
-  #     task_owner=task_owner,
-  #     gcs_subfolder=f"{GCS_SUBFOLDER_PREFIX}/jax",
-  # )
 
   return task.AxlearnTask(
       task_test_config=job_test_config,

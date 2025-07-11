@@ -214,19 +214,9 @@ class AxlearnTask(BaseTask):
           gcs_path,
           axlearn_branch,
       )
-      # wait_for_workload_completion = xpk.wait_for_workload_completion.override(
-      #     timeout=int(self.task_test_config.timeout.total_seconds()),
-      # )(
-      #     workload_id=workload_id,
-      #     project_id=self.task_gcp_config.project_name,
-      #     region=self.task_gcp_config.zone[:-2],
-      #     cluster_name=self.task_test_config.cluster_name,
-      # )
-
       (
           (workload_id, gcs_path)
           >> launch_workload
-          # >> wait_for_workload_completion
       )
       return group, gcs_path
 
@@ -238,33 +228,24 @@ class AxlearnTask(BaseTask):
     ) -> DAGNode:
       """Create the workload and wait for it to provision."""
       with TaskGroup(group_id="launch_workload") as group:
-        run_workload = axlearn.run_workload.override(
-            owner=self.task_test_config.task_owner
-        )(
+        run_workload = axlearn.run_workload_axlearn(
             task_id="run_workload",
             cluster_project=self.task_gcp_config.project_name,
             zone=self.task_gcp_config.zone,
             cluster_name=self.task_test_config.cluster_name,
-            run_name="camiloquinones-lal"
+            run_name="camiloquinones-lal",
             benchmark_id=self.task_test_config.benchmark_id,
             workload_id=workload_id,
             gcs_path=gcs_path,
-            docker_image=self.task_test_config.docker_image,
             accelerator_type=self.task_test_config.accelerator.name,
-            run_cmds=self.task_test_config.test_script,
-            num_slices=self.task_test_config.num_slices,
+            run_cmds="",
+            module="text.gpt.c4_trainer ",
+            model_config = "fuji-70B-v2-flash-orbax ",
+            trainer_dir = "gs://cienet-cmcs-axlearn/camiloquinones-v5p-70b-ici-4-n3/",
+            num_replicas=self.task_test_config.num_slices,
             axlearn_branch=axlearn_branch,
         )
-        # wait_for_workload_start = xpk.wait_for_workload_start.override(
-        #     timeout=self.workload_provision_timeout.total_seconds()
-        # )(
-        #     workload_id=workload_id,
-        #     project_id=self.task_gcp_config.project_name,
-        #     region=self.task_gcp_config.zone[:-2],
-        #     cluster_name=self.task_test_config.cluster_name,
-        # )
         run_workload
-        # >> wait_for_workload_start
         return group
 
 @dataclasses.dataclass
