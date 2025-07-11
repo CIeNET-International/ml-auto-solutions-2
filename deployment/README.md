@@ -54,7 +54,11 @@ Then, update `bucket` name to yours in the `backend "gcs"` block of `provider.tf
     4. clusters.tf (Delete all code inside this file)
     5. provider.tf
 
-## Step 4 - Create Cloud Composer environment
+## Step 4 - Grant Permission
+
+If you want to build this prod env in cienet-cmcs, please use your **TVC google account** to grant yourself 'Editor' role in cienet-cmcs in IAM page.
+
+## Step 5 - Create Cloud Composer environment
 
 Under this `deployment` directory, run commands below to create a new Cloud Composer environment and BigQuery database with your custom service account.
 
