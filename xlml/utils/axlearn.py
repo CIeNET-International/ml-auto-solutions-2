@@ -34,19 +34,20 @@ import time
 
 # b/411426745 - Setting branch to 0.4.1 till the depdency issue is resolved.
 LALITAH_BRANCH = "lkolluru-orbax-fuji-v2"
+MAIN_BRANCH = "v0.4.1"
 # Duration = past 7 days
-# LOGGING_URL_FORMAT = (
-#     "https://pantheon.corp.google.com/logs/query;"
-#     + "query=resource.type%3D%22k8s_container%22%0A"
-#     + "resource.labels.project_id%3D%22{project}%22%0A"
-#     + "resource.labels.location%3D%22{region}%22%0A"
-#     + "resource.labels.cluster_name%3D%22{cluster}%22%0A"
-#     + "resource.labels.namespace_name%3D%22default%22%0A"
-#     + "labels.k8s-pod%2Fjobset_sigs_k8s_io%2F"
-#     + "jobset-name%3D%22{workload_id}%22%20severity%3E%3DDEFAULT;"
-#     + "storageScope=project;duration=P7D?e=13803378&"
-#     + "mods=allow_workbench_image_override&project={project}"
-# )
+LOGGING_URL_FORMAT = (
+    "https://pantheon.corp.google.com/logs/query;"
+    + "query=resource.type%3D%22k8s_container%22%0A"
+    + "resource.labels.project_id%3D%22{project}%22%0A"
+    + "resource.labels.location%3D%22{region}%22%0A"
+    + "resource.labels.cluster_name%3D%22{cluster}%22%0A"
+    + "resource.labels.namespace_name%3D%22default%22%0A"
+    + "labels.k8s-pod%2Fjobset_sigs_k8s_io%2F"
+    + "jobset-name%3D%22{workload_id}%22%20severity%3E%3DDEFAULT;"
+    + "storageScope=project;duration=P7D?e=13803378&"
+    + "mods=allow_workbench_image_override&project={project}"
+)
 
 UPGRADE_PIP = "pip install --upgrade pip"
 UPGRADE_SETUPTOOLS = "python -m pip install --upgrade setuptools"
@@ -123,7 +124,7 @@ def run_workload(
     gcs_path: str,
     docker_image: str,
     accelerator_type: str,
-    run_cmds: str,
+    # run_cmds: str,
     cluster_name: str,
     run_name:str,
     module: str,

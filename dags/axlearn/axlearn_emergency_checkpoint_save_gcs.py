@@ -29,16 +29,16 @@ SCHEDULED_TIME = '0 18 * * *' if composer_env.is_prod_env() else None
 v5p_conf = {
     'tpu_version': TpuVersion.V5P,
     'tpu_cores': 8,
-    'tpu_zone': Zone.US_CENTRAL1_A.value,
+    'tpu_zone': Zone.US_EAST5_A.value,
     'is_tpu_reserved': False,
     'project_name': "cienet-cmcs",
-    'network': 'camiloquinones-net',
-    'subnetwork': 'camiloquinones-subnet',
+    'network': 'ernie-net',
+    'subnetwork': 'ernie-subnet',
 }
 
 common = {
     'time_out_in_min': 180,
-    'task_owner': "Camilo",
+    'task_owner': "Ernie",
 }
 
 with models.DAG(
@@ -49,7 +49,7 @@ with models.DAG(
         'tpu',
         'axlearn',
     ],
-    start_date=datetime.datetime(2024, 4, 4),
+    start_date=datetime.datetime(2025, 7, 10),
     catchup=False,
 ) as dag:
   with TaskGroup(
@@ -71,19 +71,19 @@ with models.DAG(
           # AXLearn head against JAX head
           # Runs Fuji training on v5p-128 in the provided GCP Project
           jax_main_fuji_v5p_8 = config.get_axlearn_tpu_config(
-              cluster_name="camiloquinones-axlearn",
+              cluster_name="ernie-axlearn-v5p128",
               docker_image=image.value,
               tpu_version=TpuVersion.V5P,
               tpu_cores=128,
               tpu_zone=Zone.US_EAST5_A.value,
               runtime_version=RuntimeVersion.V2_ALPHA_TPUV5.value,
               project_name="cienet-cmcs",
-              network='camiloquinones-net',
-              subnetwork='camiloquinones-subnet',
+              network='ernie-net',
+              subnetwork='ernie-subnet',
               is_tpu_reserved=False,
               num_slices=2,
               model_config='fuji-test-v1',
               time_out_in_min=180,
-              task_owner="Camilo",
+              task_owner="Ernie",
           ).run()
 

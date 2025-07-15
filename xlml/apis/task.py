@@ -245,13 +245,13 @@ class AxlearnTask(BaseTask):
             cluster_project=self.task_gcp_config.project_name,
             zone=self.task_gcp_config.zone,
             cluster_name=self.task_test_config.cluster_name,
-            run_name="camiloquinones-lal"
+            run_name="ernie-lal",
             benchmark_id=self.task_test_config.benchmark_id,
             workload_id=workload_id,
             gcs_path=gcs_path,
             docker_image=self.task_test_config.docker_image,
             accelerator_type=self.task_test_config.accelerator.name,
-            run_cmds=self.task_test_config.test_script,
+            # run_cmds=self.task_test_config.test_script,
             num_slices=self.task_test_config.num_slices,
             axlearn_branch=axlearn_branch,
         )
