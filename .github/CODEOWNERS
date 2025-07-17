@@ -11,7 +11,7 @@ dags/legacy_test/tests/pytorch @vanbasten23 @zpcore @ManfeiBai
 
 dags/mantaray @ManfeiBai @tengyifei @zpcore
 
-dags/multipod @tonyjohnchen @raymondzouu @gobbleturk @shralex @RissyRan @jiangjy1982
+dags/multipod @tonyjohnchen @raymondzouu @gobbleturk @shralex @RissyRan @jiangjy1982 @notabee @severus-ho
 
 dags/mlcompass @ortibazar @sganeshb @brajiang @wlzhg
 
