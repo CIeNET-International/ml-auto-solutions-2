@@ -341,7 +341,8 @@ class DockerImage(enum.Enum):
   XPK_JAX_TEST = "gcr.io/cloud-ml-auto-solutions/xpk_jax_test:latest"
   MAXTEXT_STABLE_SEVERUS = "gcr.io/cienet-cmcs/severus-runner:latest"
   ORBAX_STABLE_PURE_RUNNER = "gcr.io/cienet-cmcs/orbax-pure-runner:latest"
-  AXLEARN_ORBAX_STABLE_JAX= "us-docker.pkg.dev/cienet-cmcs/axlearn/tpu:camiloquinones-lal"
+  AXLEARN_ORBAX_STABLE_JAX = "us-docker.pkg.dev/cienet-cmcs/axlearn/tpu:camiloquinones-lal"
+  AXLEARN_ORBAX_CLI = "us-docker.pkg.dev/cienet-cmcs/axlearn/ernie-axlearn-cli"
   PYTORCH_NIGHTLY = (
       "us-central1-docker.pkg.dev/tpu-pytorch-releases/docker/"
       f"xla:nightly_3.10_tpuvm_{datetime.datetime.today().strftime('%Y%m%d')}"

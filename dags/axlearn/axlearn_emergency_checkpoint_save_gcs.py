@@ -18,9 +18,10 @@ import datetime
 from airflow import models
 from dags import composer_env
 from dags.multipod.configs.common import SetupMode
-from dags.common.vm_resource import TpuVersion, Zone, RuntimeVersion, Project,DockerImage
+from dags.common.vm_resource import TpuVersion, Zone, RuntimeVersion, DockerImage
 from dags.axlearn.configs import axlearn_config as config
 from airflow.utils.task_group import TaskGroup
+from datetime import timedelta
 
 
 # Run once a day at 6 pm UTC (11 am PST)
@@ -40,9 +41,12 @@ common = {
     'time_out_in_min': 180,
     'task_owner': "Ernie",
 }
-
+default_args = {
+    "retries": 3,
+    "retry_delay": timedelta(minutes=25),
+}
 with models.DAG(
-    dag_id='project_bite_tpu_e2e',
+    dag_id='orbax-axlearn-training',
     schedule=SCHEDULED_TIME,
     tags=[
         'multipod_team',
@@ -51,6 +55,7 @@ with models.DAG(
     ],
     start_date=datetime.datetime(2025, 7, 10),
     catchup=False,
+    default_args=default_args,
 ) as dag:
   with TaskGroup(
       group_id='axlearn_tpu_training', prefix_group_id=False
@@ -81,7 +86,7 @@ with models.DAG(
               network='ernie-net',
               subnetwork='ernie-subnet',
               is_tpu_reserved=False,
-              num_slices=2,
+              num_replica=2,
               model_config='fuji-test-v1',
               time_out_in_min=180,
               task_owner="Ernie",
