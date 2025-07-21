@@ -59,12 +59,12 @@ For accurate issue assignment, ensure that the `owner` property defined for test
 
 2. Add `apache-airflow-providers-github` Pypi package to your Composer environment.
     ```
-    gcloud composer environments update ${COMPOSER_ENVIRONMENT_NAME} --location=${COMPOSER_LOCATION}--update-pypi-package='apache-airflow-providers-github'
+    gcloud composer environments update ${COMPOSER_ENVIRONMENT_NAME} --location=${COMPOSER_LOCATION} --update-pypi-package='apache-airflow-providers-github'
     ```
 
-3. Add the connection conn_id `github_default` to Secret Manager. This command creates a secret with the connection details.
+3. Add the connection conn_id `github_default` to Secret Manager. This command creates a secret for accessing Github.
     ```
-    echo "{ \"conn_type\": \"http\", \"host\": \"https://api.github.com\", \"password\": \"${COMPOSER_GITHUB_TOKEN}\" }" | gcloud secrets create airflow-connections-${COMPOSER_ENVIRONMENT_NAME}-github_default --data-file=-
+    echo "{ \"password\": \"${COMPOSER_GITHUB_TOKEN}\" }" | gcloud secrets create airflow-connections-${COMPOSER_ENVIRONMENT_NAME}-github_default --data-file=-
     ```
 
 4. Upload Composser plugins to the folder for dags in your Composer bucket
