@@ -1,4 +1,6 @@
 import json
+import logging
+
 import pandas as pd
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -102,8 +104,8 @@ def safe_json(obj):
   """
   try:
     return json.dumps(obj)
-  except:
-    return None
+  except Exception as e:
+    logging.error(f"Exception: {e}")
 
 
 def export_table(table_name, **kwargs):
@@ -115,7 +117,7 @@ def export_table(table_name, **kwargs):
   gcs_bucket_param = kwargs["dag_run"].conf.get("target_gcs_bucket") or kwargs[
       "params"
   ].get("target_gcs_bucket")
-  print(f"export table {table_name}.")
+  logging.info(f"export table {table_name}.")
   pg = PostgresHook(postgres_conn_id=POSTGRES_CONN_ID)
   gcs = GCSHook(gcp_conn_id=GCP_CONN_ID)
 
@@ -125,7 +127,7 @@ def export_table(table_name, **kwargs):
   )
   for obj in existing_objects:
     gcs.delete(bucket_name=gcs_bucket_param, object_name=obj)
-  print(
+  logging.info(
       f"Cleaned up {len(existing_objects)} existing JSON files for {table_name}."
   )
 
@@ -168,9 +170,10 @@ def export_table(table_name, **kwargs):
     cast_int(df, col)
 
   chunk_size = 100000  # Upload in chunks for large tables
+  num_chunks = 1
 
   if len(df) == 0:
-    print(f"No data to export for {table_name}.")
+    logging.warning(f"No data to export for {table_name}.")
     return
   if len(df) <= chunk_size:
     # Single chunk export
@@ -198,9 +201,7 @@ def export_table(table_name, **kwargs):
           mime_type="application/json",
       )
 
-  print(
-      f"Exported {table_name} in {num_chunks if len(df) > chunk_size else 1} chunk(s)"
-  )
+  logging.info(f"Exported {table_name} in {num_chunks} chunk(s)")
 
 
 def create_bq_load_operator(
@@ -209,12 +210,12 @@ def create_bq_load_operator(
   """
   Create a GCSToBigQueryOperator to load JSON files into BigQuery.
   """
-  print(f"load table {table_name}.")
+  logging.info(f"load table {table_name}.")
   schema = fetch_schema(table_name)
-  print(
+  logging.info(
       f"Instantiating GCSToBigQueryOperator for {table_name} with schema: {json.dumps(schema, indent=2)}"
   )
-  return GCSToBigQueryOperator(
+  GCSToBigQueryOperator(
       task_id=f"load_{table_name}_to_bq",
       bucket=gcs_bucket_param,
       source_objects=[f"{GCS_PREFIX}/{table_name}_part_*.json"],
@@ -239,10 +240,9 @@ def run_create_bq_load_operator(table_name, **kwargs):
       "params"
   ].get("target_gcs_bucket")
 
-  task = create_bq_load_operator(
+  create_bq_load_operator(
       table_name, bq_project_param, bq_dataset_param, gcs_bucket_param
   )
-  task.execute(context=kwargs)
 
 
 # Load default config values from Airflow Variables
