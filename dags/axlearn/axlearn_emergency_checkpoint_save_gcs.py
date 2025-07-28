@@ -63,7 +63,7 @@ with models.DAG(
 
     docker_images = [(
         SetupMode.NIGHTLY,
-        DockerImage.AXLEARN_ORBAX_STABLE_JAX,
+        DockerImage.AXLEARN_ORBAX_CLI,
     )]
 
     test_configs = {

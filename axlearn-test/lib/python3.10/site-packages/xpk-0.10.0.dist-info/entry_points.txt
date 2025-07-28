@@ -1,0 +1,2 @@
+[console_scripts]
+xpk = xpk.main:main

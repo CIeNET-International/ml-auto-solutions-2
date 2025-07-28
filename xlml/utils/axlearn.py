@@ -29,10 +29,28 @@ from typing import Tuple
 import sys
 import re
 from datetime import timedelta
+from dags.common.vm_resource import DockerImage
 
 LALITAH_BRANCH = "lkolluru-orbax-fuji-v2"
 SAM_BRANCH = "orbax-fuji-v2"
 
+@task(execution_timeout=timedelta(hours=1))
+def run_axlearn_image()-> None:
+  cmds = [
+      "set -xue",
+      "ls -al airflow",
+      # "axlearn -h",
+      "apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y",
+      f"docker pull {DockerImage.AXLEARN_ORBAX_CLI}",
+      # "docker run -ti --rm -v /var/run/docker.sock:/var/run/docker.sock --name ernie-axlearn-cli ernie-axlearn-cli",
+  ]
+  hook = SubprocessHook()
+  result = hook.run_command(
+      ["bash", "-c",";".join(cmds)]
+    )
+  assert (
+      result.exit_code == 0
+  ), f"Set up axlearn dependencies command failed with code {result.exit_code}"
 
 # This function do some hacks to get Axlearn working with Airlfow
 # One of them is deleting some unuseful packages in [dev] dependencies. We only need to run axlearn CLI

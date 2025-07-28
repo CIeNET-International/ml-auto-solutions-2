@@ -230,43 +230,40 @@ class AxlearnTask(BaseTask):
     ) -> DAGNode:
       """Create the workload and wait for it to provision."""
       with TaskGroup(group_id="launch_workload") as group:
-        setup_axlearn_dpd = axlearn.set_up_axlearn_dpd(axlearn_branch)
-        create_conf_axlearn = axlearn.create_conf_axlearn()
-        activate_axlearn = axlearn.activate_axlearn()
-        run_workload = axlearn.run_workload_axlearn(
-            task_id="run_workload",
-            cluster_project=self.task_gcp_config.project_name,
-            zone=self.task_gcp_config.zone,
-            cluster_name=self.task_test_config.cluster_name,
-            run_name="ernie-test",
-            benchmark_id=self.task_test_config.benchmark_id,
-            workload_id=workload_id,
-            gcs_path=gcs_path,
-            accelerator_type=self.task_test_config.accelerator.name,
-            run_cmds="",
-            module="text.gpt.c4_trainer",
-            model_config = "fuji-7B-v3-flash-orbax ",
-            trainer_dir = "gs://cienet-cmcs-axlearn/ernie-test/",
-            num_replicas=self.task_test_config.num_slices,
-            axlearn_branch=axlearn_branch,
-            trace_steps=[40,90,140,190,240]
-        )
+        run_axlearn_image = axlearn.run_axlearn_image()
+        # setup_axlearn_dpd = axlearn.set_up_axlearn_dpd(axlearn_branch)
+        # create_conf_axlearn = axlearn.create_conf_axlearn()
+        # activate_axlearn = axlearn.activate_axlearn()
+        # run_workload = axlearn.run_workload_axlearn(
+        #     task_id="run_workload",
+        #     cluster_project=self.task_gcp_config.project_name,
+        #     zone=self.task_gcp_config.zone,
+        #     cluster_name=self.task_test_config.cluster_name,
+        #     run_name="ernie-test",
+        #     benchmark_id=self.task_test_config.benchmark_id,
+        #     workload_id=workload_id,
+        #     gcs_path=gcs_path,
+        #     accelerator_type=self.task_test_config.accelerator.name,
+        #     run_cmds="",
+        #     module="text.gpt.c4_trainer",
+        #     model_config = "fuji-7B-v3-flash-orbax ",
+        #     trainer_dir = "gs://cienet-cmcs-axlearn/ernie-test/",
+        #     num_replicas=self.task_test_config.num_slices,
+        #     axlearn_branch=axlearn_branch,
+        #     trace_steps=[40,90,140,190,240]
+        # )
 
-        wait_for_workload_start = xpk.wait_for_workload_start.override(
-            timeout=self.workload_provision_timeout.total_seconds()
-        )(
-            workload_id=workload_id,
-            project_id=self.task_gcp_config.project_name,
-            region=self.task_gcp_config.zone[:-2],
-            cluster_name=self.task_test_config.cluster_name,
-        )
+        # wait_for_workload_start = xpk.wait_for_workload_start.override(
+        #     timeout=self.workload_provision_timeout.total_seconds()
+        # )(
+        #     workload_id=workload_id,
+        #     project_id=self.task_gcp_config.project_name,
+        #     region=self.task_gcp_config.zone[:-2],
+        #     cluster_name=self.task_test_config.cluster_name,
+        # )
 
         (
-          setup_axlearn_dpd
-          >> create_conf_axlearn
-          >> activate_axlearn
-          >> run_workload
-          >> wait_for_workload_start
+          run_axlearn_image
         )
         return group
 
