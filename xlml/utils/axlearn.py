@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utilities to run workloads with xpk (https://github.com/AI-Hypercomputer/xpk)."""
+"""Utilities to run workloads with axlearn."""
 
 from datetime import timedelta
 import re
@@ -25,7 +25,8 @@ SAM_BRANCH = "orbax-fuji-v2"
 
 
 # This function do some hacks to get Axlearn working with Airlfow
-# One of them is deleting some unuseful packages in [dev] dependencies. We only need to run axlearn CLI
+# One of them is deleting some unuseful packages in [dev] dependencies.
+# We only need to run axlearn CLI
 @task(execution_timeout=timedelta(hours=1))
 def set_up_axlearn_dpd(branch: str):
   """setup axlearn dependencies."""
@@ -125,7 +126,8 @@ def create_conf_axlearn(
 ):
   """create axlearn config file."""
   command_string = f'cat << \'CONFIG_EOF\' > ~/axlearn/.axlearn/axlearn.default.config\n    [gcp]\n_active = "{project_id}:{zone}"\n\n[gcp."{project_id}:{zone}"]\nproject = "{project_id}"\nregion = "{zone[:-2]}"\nzone = "{zone}"\ngke_cluster = "{cluster_name}"\ncluster = "{cluster_name}"\nlabels = "tpu-v5p"\ndocker_repo = "us-docker.pkg.dev/{project_id}/axlearn"\ndefault_dockerfile = "Dockerfile"\npermanent_bucket = "{project_id}-axlearn"\nprivate_bucket = "{project_id}-axlearn"\nttl_bucket = "{project_id}-axlearn"\nCONFIG_EOF\n'
-  # command_string = """cat << 'CONFIG_EOF' > ~/axlearn/.axlearn/axlearn.default.config
+  # command_string = """cat << 'CONFIG_EOF' >
+  # ~/axlearn/.axlearn/axlearn.default.config
   #   ["gcp.cienet-cmcs:us-east5-a"]
   #   project = "cienet-cmcs"
   #   region = "us-east5"
@@ -181,19 +183,19 @@ def run_workload_axlearn(
       f"export TRAIN_DIR={trainer_dir}",
   ]
   logging.info(
-    f" Cluster: {cluster_name} \
-    -- num-replicas={num_replicas} \
-    --run_name={run_name} \
-    --project={cluster_project} \
-    --zone={zone} \
-    --instance-type={accelerator_type} \
-    --module={module} \
-    --config={model_config} \
-    --trainer_dir={trainer_dir} \
-    --data_dir=gs://axlearn-public/tensorflow_datasets \
-    --jax_backend=tpu \
-    --mesh_selector={accelerator_type} \
-    --initialization_timeout=1200 Trace: {trace_list}"
+      f" Cluster: {cluster_name} \
+      -- num-replicas={num_replicas} \
+      --run_name={run_name} \
+      --project={cluster_project} \
+      --zone={zone} \
+      --instance-type={accelerator_type} \
+      --module={module} \
+      --config={model_config} \
+      --trainer_dir={trainer_dir} \
+      --data_dir=gs://axlearn-public/tensorflow_datasets \
+      --jax_backend=tpu \
+      --mesh_selector={accelerator_type} \
+      --initialization_timeout=1200 Trace: {trace_list}"
   )
   workload_create_cmd = (
       f"axlearn gcp launch run --cluster=$CLUSTER    "
@@ -385,7 +387,8 @@ def run_workload_axlearn(
 #       for line in logs.split("\n"):
 #         logging.info(line)
 #       if f"completed step: {step_to_interrupt}" in logs:
-#         # Here we return true because we are sure the step "step_to_interrupt" is already save
+#         # Here we return true because we are sure the step
+# "step_to_interrupt" is already save
 #         logging.info("The step to be interrupt is {step_to_interrupt}")
 #         return True
 #   return False
@@ -402,8 +405,8 @@ def run_workload_axlearn(
 #   if not pods.items:
 #     logging.info(f"No pods found for workload selector: {workload_id}.")
 #
-#     # Pathways jobs delete all pods on failure so we must also check if the job
-#     # is complete
+#     # Pathways jobs delete all pods on failure so we must also check
+#       if the job is complete
 #     batch_api = _get_batch_api_client(project_id, region, cluster_name)
 #     job = _get_workload_job(batch_api, workload_id)
 #     if job is None:
@@ -416,7 +419,8 @@ def run_workload_axlearn(
 #       # Don't keep retrying if the job has failed
 #       raise AirflowFailException('Job has condition type: "Failed"')
 #
-#     if any(condition.type == "Complete" for condition in job.status.conditions):
+#     if any(condition.type == "Complete"
+# for condition in job.status.conditions):
 #       logging.info(
 #           "No pods found but job is complete for workload selector:"
 #           f" {workload_id}"
@@ -439,7 +443,8 @@ def run_workload_axlearn(
 #   finally:
 #     # TODO(jonbolin): log printing for GPUs, which have multiple containers
 #     if len(pod.spec.containers) == 1:
-#       # Print the logs of the last pod checked - either the first failed pod or
+#       # Print the logs of the last pod checked
+# - either the first failed pod or
 #       # the last successful one.
 #       logs = core_api.read_namespaced_pod_log(
 #           name=pod.metadata.name, namespace=pod.metadata.namespace
@@ -596,13 +601,15 @@ def run_workload_axlearn(
 #         if f"completed step: {step}" in logs:
 #           elapsed_time = time.monotonic() - start_time
 #           logging.info(
-#               f"Stop training at step {step}. Sensor completed successfully in {elapsed_time:.2f} seconds."
+#               f"Stop training at step {step}.
+# Sensor completed successfully in {elapsed_time:.2f} seconds."
 #           )
 #           return True
 #       time.sleep(polling_time)
 #   except Exception as e:
 #     elapsed_time = time.monotonic() - start_time
 #     logging.error(
-#         f"An unexpected error occurred: {e}. Sensor failed after {elapsed_time:.2f} seconds."
+#         f"An unexpected error occurred: {e}.
+# Sensor failed after {elapsed_time:.2f} seconds."
 #     )
 #     raise
