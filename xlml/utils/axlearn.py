@@ -13,12 +13,12 @@
 
 """Utilities to run workloads with xpk (https://github.com/AI-Hypercomputer/xpk)."""
 
+from datetime import timedelta
+import re
 import uuid
 from absl import logging
 from airflow.decorators import task
 from airflow.hooks.subprocess import SubprocessHook
-import re
-from datetime import timedelta
 
 LALITAH_BRANCH = "lkolluru-orbax-fuji-v2"
 SAM_BRANCH = "orbax-fuji-v2"
@@ -28,6 +28,7 @@ SAM_BRANCH = "orbax-fuji-v2"
 # One of them is deleting some unuseful packages in [dev] dependencies. We only need to run axlearn CLI
 @task(execution_timeout=timedelta(hours=1))
 def set_up_axlearn_dpd(branch: str):
+  """setup axlearn dependencies."""
   if branch == LALITAH_BRANCH or branch == SAM_BRANCH:
     logging.info(f"Using custom branch  ==> {branch}")
     clone_branch = (
@@ -50,7 +51,7 @@ def set_up_axlearn_dpd(branch: str):
       f"source ~/.profile",
       f"pyenv install 3.10.12 && pyenv global 3.10.12",
       "python -m venv ~/my_venv",
-      f"source ~/my_venv/bin/activate"
+      f"source ~/my_venv/bin/activate",
   ]
 
   # TODO: Need to think a better way to do this.
@@ -95,7 +96,8 @@ def activate_axlearn(
       "python --version",
       "which axlearn",
       "axlearn gcp config activate",
-      f"gcloud container clusters get-credentials {cluster_name} --region {region} --project {project_id}",
+      f"gcloud container clusters get-credentials {cluster_name} \
+        --region {region} --project {project_id}",
   ]
   hook = SubprocessHook()
   result = hook.run_command(["bash", "-c", ";".join(cmds)])
@@ -122,7 +124,7 @@ def create_conf_axlearn(
     zone: str,
 ):
   """create axlearn config file."""
-  command_string = f"cat << 'CONFIG_EOF' > ~/axlearn/.axlearn/axlearn.default.config\n    [gcp]\n_active = \"{project_id}:{zone}\"\n\n[gcp.\"{project_id}:{zone}\"]\nproject = \"{project_id}\"\nregion = \"{zone[:-2]}\"\nzone = \"{zone}\"\ngke_cluster = \"{cluster_name}\"\ncluster = \"{cluster_name}\"\nlabels = \"tpu-v5p\"\ndocker_repo = \"us-docker.pkg.dev/{project_id}/axlearn\"\ndefault_dockerfile = \"Dockerfile\"\npermanent_bucket = \"{project_id}-axlearn\"\nprivate_bucket = \"{project_id}-axlearn\"\nttl_bucket = \"{project_id}-axlearn\"\nCONFIG_EOF\n"
+  command_string = f'cat << \'CONFIG_EOF\' > ~/axlearn/.axlearn/axlearn.default.config\n    [gcp]\n_active = "{project_id}:{zone}"\n\n[gcp."{project_id}:{zone}"]\nproject = "{project_id}"\nregion = "{zone[:-2]}"\nzone = "{zone}"\ngke_cluster = "{cluster_name}"\ncluster = "{cluster_name}"\nlabels = "tpu-v5p"\ndocker_repo = "us-docker.pkg.dev/{project_id}/axlearn"\ndefault_dockerfile = "Dockerfile"\npermanent_bucket = "{project_id}-axlearn"\nprivate_bucket = "{project_id}-axlearn"\nttl_bucket = "{project_id}-axlearn"\nCONFIG_EOF\n'
   # command_string = """cat << 'CONFIG_EOF' > ~/axlearn/.axlearn/axlearn.default.config
   #   ["gcp.cienet-cmcs:us-east5-a"]
   #   project = "cienet-cmcs"
@@ -136,14 +138,10 @@ def create_conf_axlearn(
   #   permanent_bucket = "cienet-cmcs-axlearn"
   #   private_bucket = "cienet-cmcs-axlearn"
   #   ttl_bucket = "cienet-cmcs-axlearn"CONFIG_EOF"""
-  create_axlearn_conf = [command_string.rstrip('\n')]
-  cmds = [
-      *create_axlearn_conf
-  ]
+  create_axlearn_conf = [command_string.rstrip("\n")]
+  cmds = [*create_axlearn_conf]
   hook = SubprocessHook()
-  result = hook.run_command(
-      ["bash", "-c",";".join(cmds)]
-    )
+  result = hook.run_command(["bash", "-c", ";".join(cmds)])
 
   assert (
       result.exit_code == 0
@@ -180,16 +178,34 @@ def run_workload_axlearn(
       f"export NUM_REPLICAS={num_replicas}",
       f"export MODULE={module}",
       f"export MODEL_CONFIG={model_config}",
-      f"export TRAIN_DIR={trainer_dir}"
+      f"export TRAIN_DIR={trainer_dir}",
   ]
-  logging.info(f" Cluster: {cluster_name}  -- num-replicas={num_replicas}    --run_name={run_name}  --project={cluster_project} --zone={zone}  --instance-type={accelerator_type} --module={module}           --config={model_config}           --trainer_dir={trainer_dir} --data_dir=gs://axlearn-public/tensorflow_datasets            --jax_backend=tpu           --mesh_selector={accelerator_type}           --initialization_timeout=1200           Trace: {trace_list}")
+  logging.info(f" Cluster: {cluster_name} \
+              -- num-replicas={num_replicas} \
+              --run_name={run_name} \
+              --project={cluster_project} \
+              --zone={zone} \
+              --instance-type={accelerator_type} \
+              --module={module} \
+              --config={model_config} \
+              --trainer_dir={trainer_dir} \
+              --data_dir=gs://axlearn-public/tensorflow_datasets \
+              --jax_backend=tpu \
+              --mesh_selector={accelerator_type} \
+              --initialization_timeout=1200 Trace: {trace_list}")
   workload_create_cmd = (
-      f"axlearn gcp launch run --cluster=$CLUSTER    --runner_name gke_tpu_single    "
-      f" --name=$NAME   --instance_type=$INSTANCE_TYPE   --num_replicas=$NUM_REPLICAS         --bundler_spec=allow_dirty=True "
-      f"--bundler_type=artifactregistry --bundler_spec=image=tpu         --bundler_spec=dockerfile=Dockerfile  --bundler_spec=target=tpu       "
+      f"axlearn gcp launch run --cluster=$CLUSTER    "
+      f"--runner_name gke_tpu_single    "
+      f" --name=$NAME   --instance_type=$INSTANCE_TYPE   "
+      f"--num_replicas=$NUM_REPLICAS         --bundler_spec=allow_dirty=True "
+      f"--bundler_type=artifactregistry --bundler_spec=image=tpu         "
+      f"--bundler_spec=dockerfile=Dockerfile  --bundler_spec=target=tpu       "
       f"-- \"ulimit -n 1048576; ulimit -c 0; python3 -c 'import jax; jax.devices()'; python3 -m axlearn.common.launch_trainer_main\"     "
-      f"--module=$MODULE    --config=$MODEL_CONFIG           --trainer_dir=$TRAIN_DIR       "
-      f"--data_dir=gs://axlearn-public/tensorflow_datasets            --jax_backend=tpu           --mesh_selector=$INSTANCE_TYPE   --initialization_timeout=1200      {trace_list}     "
+      f"--module=$MODULE    --config=$MODEL_CONFIG           "
+      f"--trainer_dir=$TRAIN_DIR       "
+      f"--data_dir=gs://axlearn-public/tensorflow_datasets            "
+      f"--jax_backend=tpu           --mesh_selector=$INSTANCE_TYPE   "
+      f"--initialization_timeout=1200      {trace_list}     "
   )
 
   cmds = [
@@ -197,7 +213,8 @@ def run_workload_axlearn(
       "source ~/my_venv/bin/activate",
       "cd ~/axlearn",
       "axlearn gcp config activate",
-      f"gcloud container clusters get-credentials {cluster_name} --region {zone[:-2]} --project {cluster_project}",
+      f"gcloud container clusters get-credentials {cluster_name} \
+        --region {zone[:-2]} --project {cluster_project}",
       *export_var,
       workload_create_cmd,
   ]

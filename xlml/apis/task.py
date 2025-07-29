@@ -228,7 +228,6 @@ class AxlearnTask(BaseTask):
           model_config,
       )
 
-
       ((workload_id, gcs_path) >> launch_workload)
       return group, gcs_path
 
@@ -269,7 +268,7 @@ class AxlearnTask(BaseTask):
           trainer_dir=f"gs://{self.task_gcp_config.project_name}-axlearn/{self.task_test_config.test_name}-nr-{self.task_test_config.num_slices}",
           num_replicas=self.task_test_config.num_slices,
           axlearn_branch=axlearn_branch,
-          trace_steps=[40, 90, 140, 190, 240]
+          trace_steps=[40, 90, 140, 190, 240],
       )
 
       wait_for_workload_start = xpk.wait_for_workload_start.override(
@@ -282,11 +281,11 @@ class AxlearnTask(BaseTask):
       )
 
       (
-        setup_axlearn_dpd
-        >> create_conf_axlearn
-        >> activate_axlearn
-        >> run_workload
-        >> wait_for_workload_start
+          setup_axlearn_dpd
+          >> create_conf_axlearn
+          >> activate_axlearn
+          >> run_workload
+          >> wait_for_workload_start
       )
       return group
 
@@ -955,12 +954,7 @@ class GpuCreateResourceTask(BaseTask):
 
   def provision_via_existing_instance(
       self,
-  ) -> Tuple[
-      DAGNode,
-      airflow.XComArg,
-      airflow.XComArg,
-      airflow.XComArg,
-  ]:
+  ) -> Tuple[DAGNode, airflow.XComArg, airflow.XComArg, airflow.XComArg,]:
     """Provision an existing GPU accelerator.
 
     Returns:
