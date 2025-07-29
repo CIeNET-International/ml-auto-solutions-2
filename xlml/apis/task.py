@@ -166,6 +166,8 @@ class AxlearnTask(BaseTask):
       self,
       *,
       gcs_location: Optional[airflow.XComArg] = None,
+      module: Optional[str] = None,
+      model_config: Optional[str] = None,
   ) -> DAGNode:
     """Run a test job within a docker image.
 
@@ -181,13 +183,17 @@ class AxlearnTask(BaseTask):
     with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
       self.run_model(
           gcs_location,
-          axlearn_branch=axlearn.LALITAH_BRANCH
+          axlearn_branch=axlearn.LALITAH_BRANCH,
+          module=module,
+          model_config=model_config,
       )
     return group
 
   def run_model(
       self,
       gcs_location: Optional[airflow.XComArg] = None,
+      module: Optional[str] = None,
+      model_config: Optional[str] = None,
       axlearn_branch: str = "",
   ) -> DAGNode:
     """Run the TPU/GPU test in `get_bite_tpu_config` using axlearn.
@@ -213,6 +219,8 @@ class AxlearnTask(BaseTask):
           workload_id,
           gcs_path,
           axlearn_branch,
+          module,
+          model_config,
       )
 
 
@@ -227,6 +235,8 @@ class AxlearnTask(BaseTask):
         workload_id: str,
         gcs_path: str,
         axlearn_branch: str = "",
+        module: str = None,
+        model_config: str = None,
     ) -> DAGNode:
       """Create the workload and wait for it to provision."""
       with TaskGroup(group_id="launch_workload") as group:
@@ -252,8 +262,8 @@ class AxlearnTask(BaseTask):
             gcs_path=gcs_path,
             accelerator_type=self.task_test_config.accelerator.name,
             run_cmds="",
-            module=self.task_test_config.module,
-            model_config = self.task_test_config.model_config,
+            module=module,
+            model_config = model_config,
             trainer_dir = f"gs://{self.task_gcp_config.project_name}-axlearn/{self.task_test_config.test_name}-nr-{self.task_test_config.num_slices}",
             num_replicas=self.task_test_config.num_slices,
             axlearn_branch=axlearn_branch,

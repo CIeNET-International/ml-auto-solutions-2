@@ -93,9 +93,11 @@ with models.DAG(
               subnetwork=v5p_conf['subnetwork'],
               is_tpu_reserved=v5p_conf['is_tpu_reserved'],
               num_replica=v5p_conf['num_replica'],
-              module=v5p_conf['module'],
               model_config=v5p_conf['model_config'],
               time_out_in_min=common['time_out_in_min'],
               task_owner=common['task_owner'],
-          ).run()
+          ).run(
+            module=v5p_conf['module'],
+            model_config=v5p_conf['model_config'],
+          )
 
