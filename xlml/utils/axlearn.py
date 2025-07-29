@@ -180,19 +180,21 @@ def run_workload_axlearn(
       f"export MODEL_CONFIG={model_config}",
       f"export TRAIN_DIR={trainer_dir}",
   ]
-  logging.info(f" Cluster: {cluster_name} \
-              -- num-replicas={num_replicas} \
-              --run_name={run_name} \
-              --project={cluster_project} \
-              --zone={zone} \
-              --instance-type={accelerator_type} \
-              --module={module} \
-              --config={model_config} \
-              --trainer_dir={trainer_dir} \
-              --data_dir=gs://axlearn-public/tensorflow_datasets \
-              --jax_backend=tpu \
-              --mesh_selector={accelerator_type} \
-              --initialization_timeout=1200 Trace: {trace_list}")
+  logging.info(
+    f" Cluster: {cluster_name} \
+    -- num-replicas={num_replicas} \
+    --run_name={run_name} \
+    --project={cluster_project} \
+    --zone={zone} \
+    --instance-type={accelerator_type} \
+    --module={module} \
+    --config={model_config} \
+    --trainer_dir={trainer_dir} \
+    --data_dir=gs://axlearn-public/tensorflow_datasets \
+    --jax_backend=tpu \
+    --mesh_selector={accelerator_type} \
+    --initialization_timeout=1200 Trace: {trace_list}"
+  )
   workload_create_cmd = (
       f"axlearn gcp launch run --cluster=$CLUSTER    "
       f"--runner_name gke_tpu_single    "
