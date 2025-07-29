@@ -179,7 +179,7 @@ class AxlearnTask(BaseTask):
       post_process.
     """
     with TaskGroup(group_id=self.task_test_config.benchmark_id) as group:
-      run_model, gcs_path = self.run_model(
+      self.run_model(
           gcs_location,
           axlearn_branch=axlearn.LALITAH_BRANCH
       )
@@ -231,22 +231,30 @@ class AxlearnTask(BaseTask):
       """Create the workload and wait for it to provision."""
       with TaskGroup(group_id="launch_workload") as group:
         setup_axlearn_dpd = axlearn.set_up_axlearn_dpd(axlearn_branch)
-        create_conf_axlearn = axlearn.create_conf_axlearn()
-        activate_axlearn = axlearn.activate_axlearn()
+        create_conf_axlearn = axlearn.create_conf_axlearn(
+          cluster_name=self.task_test_config.cluster_name,
+          project_id=self.task_gcp_config.project_name,
+          zone=self.task_gcp_config.zone,
+        )
+        activate_axlearn = axlearn.activate_axlearn(
+          cluster_name=self.task_test_config.cluster_name,
+          project_id=self.task_gcp_config.project_name,
+          region=self.task_gcp_config.zone[:-2],
+        )
         run_workload = axlearn.run_workload_axlearn(
             task_id="run_workload",
             cluster_project=self.task_gcp_config.project_name,
             zone=self.task_gcp_config.zone,
             cluster_name=self.task_test_config.cluster_name,
-            run_name="camiloquinones-lal",
+            run_name=self.task_test_config.test_name,
             benchmark_id=self.task_test_config.benchmark_id,
             workload_id=workload_id,
             gcs_path=gcs_path,
             accelerator_type=self.task_test_config.accelerator.name,
             run_cmds="",
-            module="text.gpt.c4_trainer",
-            model_config = "fuji-7B-v3-flash-orbax ",
-            trainer_dir = "gs://cienet-cmcs-axlearn/camiloquinones-v5p-70b-ici-4-n3/",
+            module=self.task_test_config.module,
+            model_config = self.task_test_config.model_config,
+            trainer_dir = f"gs://{self.task_gcp_config.project_name}-axlearn/{self.task_test_config.test_name}-nr-{self.task_test_config.num_slices}",
             num_replicas=self.task_test_config.num_slices,
             axlearn_branch=axlearn_branch,
             trace_steps=[40,90,140,190,240]

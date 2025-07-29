@@ -58,6 +58,7 @@ def get_axlearn_tpu_config(
     tpu_zone: str,
     runtime_version: str,
     model_config: str,
+    module: str,
     time_out_in_min: int,
     task_owner: str,
     num_replica: int,
@@ -86,6 +87,9 @@ def get_axlearn_tpu_config(
       num_slices=num_replica,
       cluster_name=cluster_name,
       docker_image=docker_image,
+      model_config=model_config,
+      module=module,
+      project_name=project_name,
   )
 
   return task.AxlearnTask(

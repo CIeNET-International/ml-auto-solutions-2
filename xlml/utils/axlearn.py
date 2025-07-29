@@ -37,7 +37,7 @@ SAM_BRANCH = "orbax-fuji-v2"
 # This function do some hacks to get Axlearn working with Airlfow
 # One of them is deleting some unuseful packages in [dev] dependencies. We only need to run axlearn CLI
 @task(execution_timeout=timedelta(hours=1))
-def set_up_axlearn_dpd(branch)-> Tuple[str]:
+def set_up_axlearn_dpd(branch: str):
   if branch == LALITAH_BRANCH or  branch == SAM_BRANCH:
     logging.info(f"Using custom branch  ==> {branch}")
     clone_branch = (
@@ -91,18 +91,22 @@ def set_up_axlearn_dpd(branch)-> Tuple[str]:
   ), f"Set up axlearn dependencies command failed with code {result.exit_code}"
 
 @task
-def activate_axlearn():
+def activate_axlearn(
+  cluster_name: str,
+  project_id: str,
+  region: str,
+):
   """ Activate axlearn """
 
   cmds = [
       "set -xue",
       "cat ~/.bashrc",
       "cd ~/axlearn",
-      f"source ~/my_venv/bin/activate",
+      "source ~/my_venv/bin/activate",
       "python --version",
       "which axlearn",
       "axlearn gcp config activate",
-      "gcloud container clusters get-credentials camiloquinones-axlearn --region us-east5 --project cienet-cmcs",
+      f"gcloud container clusters get-credentials {cluster_name} --region {region} --project {project_id}",
   ]
   hook = SubprocessHook()
   result = hook.run_command(
@@ -129,9 +133,13 @@ def dummy_task(
   logging.log("Dummy task")
 
 @task(execution_timeout=timedelta(hours=1))
-def create_conf_axlearn():
+def create_conf_axlearn(
+  cluster_name: str,
+  project_id: str,
+  zone: str,
+):
 
-  command_string = "cat << 'CONFIG_EOF' > ~/axlearn/.axlearn/axlearn.default.config\n    [gcp]\n_active = \"cienet-cmcs:us-east5-a\"\n\n[gcp.\"cienet-cmcs:us-east5-a\"]\nproject = \"cienet-cmcs\"\nregion = \"us-east5\"\nzone = \"us-east5-a\"\ngke_cluster = \"camiloquinones-axlearn\"\ncluster = \"camiloquinones-axlearn\"\nlabels = \"tpu-v5p\"\ndocker_repo = \"us-docker.pkg.dev/cienet-cmcs/axlearn\"\ndefault_dockerfile = \"Dockerfile\"\npermanent_bucket = \"cienet-cmcs-axlearn\"\nprivate_bucket = \"cienet-cmcs-axlearn\"\nttl_bucket = \"cienet-cmcs-axlearn\"\nCONFIG_EOF\n"
+  command_string = f"cat << 'CONFIG_EOF' > ~/axlearn/.axlearn/axlearn.default.config\n    [gcp]\n_active = \"{project_id}:{zone}\"\n\n[gcp.\"{project_id}:{zone}\"]\nproject = \"{project_id}\"\nregion = \"{zone[:-2]}\"\nzone = \"{zone}\"\ngke_cluster = \"{cluster_name}\"\ncluster = \"{cluster_name}\"\nlabels = \"tpu-v5p\"\ndocker_repo = \"us-docker.pkg.dev/{project_id}/axlearn\"\ndefault_dockerfile = \"Dockerfile\"\npermanent_bucket = \"{project_id}-axlearn\"\nprivate_bucket = \"{project_id}-axlearn\"\nttl_bucket = \"{project_id}-axlearn\"\nCONFIG_EOF\n"
   # command_string = """cat << 'CONFIG_EOF' > ~/axlearn/.axlearn/axlearn.default.config
   #   ["gcp.cienet-cmcs:us-east5-a"]
   #   project = "cienet-cmcs"
@@ -207,7 +215,7 @@ def run_workload_axlearn(
       "source ~/my_venv/bin/activate",
       "cd ~/axlearn",
       "axlearn gcp config activate",
-      "gcloud container clusters get-credentials camiloquinones-axlearn --region us-east5 --project cienet-cmcs",
+      f"gcloud container clusters get-credentials {cluster_name} --region {zone[:-2]} --project {cluster_project}",
       *export_var,
       workload_create_cmd
   ]

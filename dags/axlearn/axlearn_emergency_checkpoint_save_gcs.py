@@ -18,7 +18,8 @@ import datetime
 from airflow import models
 from dags import composer_env
 from dags.multipod.configs.common import SetupMode
-from dags.common.vm_resource import TpuVersion, Zone, RuntimeVersion, Project,DockerImage
+from dags.common import test_owner
+from dags.common.vm_resource import TpuVersion, Zone, RuntimeVersion, DockerImage
 from dags.axlearn.configs import axlearn_config as config
 from airflow.utils.task_group import TaskGroup
 from datetime import timedelta
@@ -28,18 +29,23 @@ from datetime import timedelta
 SCHEDULED_TIME = '0 18 * * *' if composer_env.is_prod_env() else None
 
 v5p_conf = {
+    'cluster_name': "ernie-axlearn-v5p",
     'tpu_version': TpuVersion.V5P,
-    'tpu_cores': 8,
-    'tpu_zone': Zone.US_CENTRAL1_A.value,
+    'tpu_cores': 128,
+    'tpu_zone': Zone.US_EAST5_A.value,
     'is_tpu_reserved': False,
     'project_name': "cienet-cmcs",
-    'network': 'camiloquinones-net',
-    'subnetwork': 'camiloquinones-subnet',
+    'network': 'ernie-net',
+    'subnetwork': 'ernie-subnet',
+    'module': 'text.gpt.c4_trainer',
+    'model_config': 'fuji-7B-v3-flash-orbax',
+    'num_replica': 2,
+    'runtime_version': RuntimeVersion.V2_ALPHA_TPUV5.value,
 }
 
 common = {
     'time_out_in_min': 180,
-    'task_owner': "Camilo",
+    'task_owner': test_owner.ERNIE_C,
 }
 
 default_args = {
@@ -76,19 +82,20 @@ with models.DAG(
           # AXLearn head against JAX head
           # Runs Fuji training on v5p-128 in the provided GCP Project
           jax_main_fuji_v5p_8 = config.get_axlearn_tpu_config(
-              cluster_name="camiloquinones-axlearn",
+              cluster_name=v5p_conf['cluster_name'],
               docker_image=image.value,
-              tpu_version=TpuVersion.V5P,
-              tpu_cores=128,
-              tpu_zone=Zone.US_EAST5_A.value,
-              runtime_version=RuntimeVersion.V2_ALPHA_TPUV5.value,
-              project_name="cienet-cmcs",
-              network='camiloquinones-net',
-              subnetwork='camiloquinones-subnet',
-              is_tpu_reserved=False,
-              num_replica=2,
-              model_config='fuji-test-v1',
-              time_out_in_min=180,
-              task_owner="Camilo",
+              tpu_version=v5p_conf['tpu_version'],
+              tpu_cores=v5p_conf['tpu_cores'],
+              tpu_zone=v5p_conf['tpu_zone'],
+              runtime_version=v5p_conf['runtime_version'],
+              project_name=v5p_conf['project_name'],
+              network=v5p_conf['network'],
+              subnetwork=v5p_conf['subnetwork'],
+              is_tpu_reserved=v5p_conf['is_tpu_reserved'],
+              num_replica=v5p_conf['num_replica'],
+              module=v5p_conf['module'],
+              model_config=v5p_conf['model_config'],
+              time_out_in_min=common['time_out_in_min'],
+              task_owner=common['task_owner'],
           ).run()
 
