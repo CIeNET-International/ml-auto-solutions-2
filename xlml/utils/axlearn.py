@@ -11,7 +11,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utilities to run workloads with axlearn."""
+"""Utilities to run workloads with AXLearn."""
 
 from datetime import timedelta
 import re
@@ -27,15 +27,13 @@ SAM_BRANCH = "orbax-fuji-v2"
 # This function do some hacks to get Axlearn working with Airlfow
 # One of them is deleting some unuseful packages in [dev] dependencies.
 # We only need to run axlearn CLI
-@task(execution_timeout=timedelta(hours=1))
+@task
 def set_up_axlearn_dpd(branch: str):
   """setup axlearn dependencies."""
-  if branch == LALITAH_BRANCH or branch == SAM_BRANCH:
-    logging.info(f"Using custom branch  ==> {branch}")
-    clone_branch = (
-        f"git clone --branch {branch} https://github.com/lkolluru05/axlearn.git"
-        f" $HOME/axlearn"
-    )
+  logging.info(f"Using custom branch  ==> {branch}")
+  clone_branch = (
+      f"git clone --branch {branch} https://github.com/lkolluru05/axlearn.git $HOME/axlearn"
+  )
 
   # Maybe add these lines
   install_python3_cmd = [
@@ -182,34 +180,34 @@ def run_workload_axlearn(
       f"export MODEL_CONFIG={model_config}",
       f"export TRAIN_DIR={trainer_dir}",
   ]
-  logging.info(
-      f" Cluster: {cluster_name} \
-      -- num-replicas={num_replicas} \
-      --run_name={run_name} \
-      --project={cluster_project} \
-      --zone={zone} \
-      --instance-type={accelerator_type} \
-      --module={module} \
-      --config={model_config} \
-      --trainer_dir={trainer_dir} \
-      --data_dir=gs://axlearn-public/tensorflow_datasets \
-      --jax_backend=tpu \
-      --mesh_selector={accelerator_type} \
-      --initialization_timeout=1200 Trace: {trace_list}"
-  )
+  # logging.info(
+  #     f" Cluster: {cluster_name} \
+  #     -- num-replicas={num_replicas} \
+  #     --run_name={run_name} \
+  #     --project={cluster_project} \
+  #     --zone={zone} \
+  #     --instance-type={accelerator_type} \
+  #     --module={module} \
+  #     --config={model_config} \
+  #     --trainer_dir={trainer_dir} \
+  #     --data_dir=gs://axlearn-public/tensorflow_datasets \
+  #     --jax_backend=tpu \
+  #     --mesh_selector={accelerator_type} \
+  #     --initialization_timeout=1200 Trace: {trace_list}"
+  # )
   workload_create_cmd = (
-      f"axlearn gcp launch run --cluster=$CLUSTER    "
-      f"--runner_name gke_tpu_single    "
-      f" --name=$NAME   --instance_type=$INSTANCE_TYPE   "
-      f"--num_replicas=$NUM_REPLICAS         --bundler_spec=allow_dirty=True "
-      f"--bundler_type=artifactregistry --bundler_spec=image=tpu         "
-      f"--bundler_spec=dockerfile=Dockerfile  --bundler_spec=target=tpu       "
-      f"-- \"ulimit -n 1048576; ulimit -c 0; python3 -c 'import jax; jax.devices()'; python3 -m axlearn.common.launch_trainer_main\"     "
-      f"--module=$MODULE    --config=$MODEL_CONFIG           "
-      f"--trainer_dir=$TRAIN_DIR       "
-      f"--data_dir=gs://axlearn-public/tensorflow_datasets            "
-      f"--jax_backend=tpu           --mesh_selector=$INSTANCE_TYPE   "
-      f"--initialization_timeout=1200      {trace_list}     "
+      f"axlearn gcp launch run --cluster=$CLUSTER "
+      f"--runner_name gke_tpu_single "
+      f" --name=$NAME --instance_type=$INSTANCE_TYPE "
+      f"--num_replicas=$NUM_REPLICAS --bundler_spec=allow_dirty=True "
+      f"--bundler_type=artifactregistry --bundler_spec=image=tpu "
+      f"--bundler_spec=dockerfile=Dockerfile --bundler_spec=target=tpu "
+      f"-- \"ulimit -n 1048576; ulimit -c 0; python3 -c 'import jax; jax.devices()'; python3 -m axlearn.common.launch_trainer_main\" "
+      f"--module=$MODULE --config=$MODEL_CONFIG "
+      f"--trainer_dir=$TRAIN_DIR "
+      f"--data_dir=gs://axlearn-public/tensorflow_datasets "
+      f"--jax_backend=tpu --mesh_selector=$INSTANCE_TYPE "
+      f"--initialization_timeout=1200 {trace_list} "
   )
 
   cmds = [
