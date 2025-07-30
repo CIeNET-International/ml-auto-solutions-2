@@ -34,19 +34,21 @@ from dags.common.vm_resource import DockerImage
 LALITAH_BRANCH = "lkolluru-orbax-fuji-v2"
 SAM_BRANCH = "orbax-fuji-v2"
 
-@task(execution_timeout=timedelta(hours=1))
+@task(execution_timeout=timedelta(minutes=10))
 def run_axlearn_image()-> None:
   cmds = [
       "set -xue",
-      "ls -al airflow",
-      # "axlearn -h",
-      "apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y",
-      f"docker pull {DockerImage.AXLEARN_ORBAX_CLI}",
-      # "docker run -ti --rm -v /var/run/docker.sock:/var/run/docker.sock --name ernie-axlearn-cli ernie-axlearn-cli",
+      # "ls -al airflow",
+      "kubectl run axlearn \
+        --image=us-docker.pkg.dev/cienet-cmcs/axlearn/ernie-axlearn-cli:latest \
+        --namespace=composer-user-workloads \
+        --restart=Never \
+        --rm --attach \
+        --command -- bash -cx 'ls -al && bash setup_env.sh && bash ensure-gcp-resources.sh && echo 1 | axlearn gcp config activate && bash test-orbax.sh'",
   ]
   hook = SubprocessHook()
   result = hook.run_command(
-      ["bash", "-c",";".join(cmds)]
+      ["bash", "-c", ";".join(cmds)]
     )
   assert (
       result.exit_code == 0
