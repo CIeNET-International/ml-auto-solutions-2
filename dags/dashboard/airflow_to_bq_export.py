@@ -3,6 +3,7 @@ import logging
 
 import pandas as pd
 from airflow import DAG
+from airflow.decorators import task
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
@@ -103,9 +104,24 @@ def safe_json(obj):
   Safely convert Python objects to JSON strings, return None if error.
   """
   try:
+    if type(obj) == memoryview:
+      obj = obj.tobytes()
     return json.dumps(obj)
   except Exception as e:
     logging.error(f"Exception: {e}")
+
+def dataframe_memoryview_to_bytes(dataframe: pd.DataFrame) -> pd.DataFrame:
+  """
+  Convert to string if the datatype of the column is memoryview.
+
+  dataframe: input dataframe.
+  return: converted dataframe.
+  """
+  for col in dataframe.columns:
+    if len(dataframe[col]) > 0 and type(dataframe[col][0]) == memoryview:
+      dataframe[col] = dataframe[col].apply(str)
+      logging.info(col + " is converted from memoryview to string")
+  return dataframe
 
 
 def export_table(table_name, **kwargs):
@@ -151,6 +167,7 @@ def export_table(table_name, **kwargs):
   ]
 
   # Table-specific cleanup
+  # df = dataframe_memoryview_to_bytes(df)
   if table_name == "dag":
     clean_timestamp(df, "last_parsed_time")
   if table_name == "dag_run":
@@ -213,9 +230,9 @@ def create_bq_load_operator(
   logging.info(f"load table {table_name}.")
   schema = fetch_schema(table_name)
   logging.info(
-      f"Instantiating GCSToBigQueryOperator for {table_name} with schema: {json.dumps(schema, indent=2)}"
+      f"Instantiating GCSToBigQueryOperaETUtor for {table_name} with schema: {json.dumps(schema, indent=2)}"
   )
-  GCSToBigQueryOperator(
+  return GCSToBigQueryOperator(
       task_id=f"load_{table_name}_to_bq",
       bucket=gcs_bucket_param,
       source_objects=[f"{GCS_PREFIX}/{table_name}_part_*.json"],
@@ -240,9 +257,35 @@ def run_create_bq_load_operator(table_name, **kwargs):
       "params"
   ].get("target_gcs_bucket")
 
-  create_bq_load_operator(
+  return create_bq_load_operator(
       table_name, bq_project_param, bq_dataset_param, gcs_bucket_param
   )
+
+  # task.execute(context=kwargs)
+
+@task(multiple_outputs=True)
+def get_table_param_and_schema(table_name, **kwargs):
+  bq_project_param = kwargs["dag_run"].conf.get("target_project_id") or kwargs[
+      "params"
+  ].get("target_project_id")
+  bq_dataset_param = kwargs["dag_run"].conf.get(
+      "target_bigquery_dataset"
+  ) or kwargs["params"].get("target_bigquery_dataset")
+  gcs_bucket_param = kwargs["dag_run"].conf.get("target_gcs_bucket") or kwargs[
+      "params"
+  ].get("target_gcs_bucket")
+
+  # logging.info(f"load table {table_name}.")
+  # schema = fetch_schema(table_name)
+  # logging.info(
+  #     f"Instantiating GCSToBigQueryOperaETUtor for {table_name} with schema: {json.dumps(schema, indent=2)}"
+  # )
+
+  return {
+      "bucket": gcs_bucket_param,
+      "destination_project_dataset_table": f"{bq_project_param}.{bq_dataset_param}.{table_name}",
+      # "schema_fields": schema,
+  }
 
 
 # Load default config values from Airflow Variables
@@ -299,11 +342,25 @@ with DAG(
         op_kwargs={"table_name": table},
     )
 
+    table_params = get_table_param_and_schema.override(task_id=f"get_{table}_params_and_schema")(table_name=table)
+
     # Define load task to load exported JSON files to BigQuery
-    load_task = PythonOperator(
+    # load_task = PythonOperator(
+    #     task_id=f"load_{table}_to_bq",
+    #     python_callable=run_create_bq_load_operator,
+    #     op_kwargs={"table_name": table},
+    # )
+    load_task = GCSToBigQueryOperator(
         task_id=f"load_{table}_to_bq",
-        python_callable=run_create_bq_load_operator,
-        op_kwargs={"table_name": table},
+        bucket=table_params["bucket"],
+        source_objects=[f"{GCS_PREFIX}/{table}_part_*.json"],
+        destination_project_dataset_table=table_params["destination_project_dataset_table"],
+        # schema_fields="{{table_params['schema_fields']}}",
+        source_format="NEWLINE_DELIMITED_JSON",
+        write_disposition="WRITE_TRUNCATE",
+        autodetect=True,
+        location=BQ_LOCATION,
+        gcp_conn_id=GCP_CONN_ID,
     )
 
     # Set task dependency: export -> load
