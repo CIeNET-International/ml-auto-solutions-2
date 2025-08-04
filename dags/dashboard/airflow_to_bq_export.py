@@ -13,6 +13,9 @@ from airflow.models.param import Param
 from airflow.models import Variable
 from airflow.exceptions import AirflowException
 
+# Scheduled time
+SCHEDULED_TIME = "0 9 * * *"
+
 # List of Airflow metadata tables to export and load
 TABLES = [
     "dag",
@@ -26,6 +29,8 @@ TABLES = [
 
 # Prefix for exported files in GCS bucket
 GCS_PREFIX = "airflow_exports"
+
+GCS_SCHEMA_PREFIX = "airflow_schemas"
 
 # Connection IDs for Airflow connections
 GCP_CONN_ID = "google_cloud_default"
@@ -124,7 +129,7 @@ def dataframe_memoryview_to_bytes(dataframe: pd.DataFrame) -> pd.DataFrame:
   return dataframe
 
 
-def export_table(table_name, **kwargs):
+def export_table_schema_and_data(table_name, **kwargs):
   """
   Export data from Postgres to GCS as newline-delimited JSON.
   Cleans old exported files before upload to prevent stale data.
@@ -220,6 +225,16 @@ def export_table(table_name, **kwargs):
 
   logging.info(f"Exported {table_name} in {num_chunks} chunk(s)")
 
+  schema = fetch_schema(table_name)
+  schema_json = json.dumps(schema, indent=2)
+  gcs.upload(
+      bucket_name=gcs_bucket_param,
+      object_name=f"{GCS_SCHEMA_PREFIX}/{table_name}_schema.json",
+      data=schema_json,
+      mime_type="application/json",
+  )
+
+  logging.info(f"Exported {table_name} schema")
 
 def create_bq_load_operator(
     table_name, bq_project_param, bq_dataset_param, gcs_bucket_param
@@ -264,7 +279,7 @@ def run_create_bq_load_operator(table_name, **kwargs):
   # task.execute(context=kwargs)
 
 @task(multiple_outputs=True)
-def get_table_param_and_schema(table_name, **kwargs):
+def get_table_param(table_name, **kwargs):
   bq_project_param = kwargs["dag_run"].conf.get("target_project_id") or kwargs[
       "params"
   ].get("target_project_id")
@@ -275,16 +290,10 @@ def get_table_param_and_schema(table_name, **kwargs):
       "params"
   ].get("target_gcs_bucket")
 
-  # logging.info(f"load table {table_name}.")
-  # schema = fetch_schema(table_name)
-  # logging.info(
-  #     f"Instantiating GCSToBigQueryOperaETUtor for {table_name} with schema: {json.dumps(schema, indent=2)}"
-  # )
 
   return {
       "bucket": gcs_bucket_param,
       "destination_project_dataset_table": f"{bq_project_param}.{bq_dataset_param}.{table_name}",
-      # "schema_fields": schema,
   }
 
 
@@ -326,8 +335,7 @@ with DAG(
   load them into a BigQuery dataset.
   """,
     start_date=datetime(2025, 7, 1),
-    schedule_interval=None,
-    # schedule_interval="16 4 * * *",
+    schedule_interval=SCHEDULED_TIME,
     catchup=False,
     tags=["airflow", "bigquery", "gcs", "metadata", "export"],
     default_args={"retries": 0},
@@ -338,27 +346,21 @@ with DAG(
     # Define export task to run export_table Python function
     export_task = PythonOperator(
         task_id=f"export_{table}",
-        python_callable=export_table,
+        python_callable=export_table_schema_and_data,
         op_kwargs={"table_name": table},
     )
 
-    table_params = get_table_param_and_schema.override(task_id=f"get_{table}_params_and_schema")(table_name=table)
+    table_params = get_table_param.override(task_id=f"get_{table}_params")(table_name=table)
 
-    # Define load task to load exported JSON files to BigQuery
-    # load_task = PythonOperator(
-    #     task_id=f"load_{table}_to_bq",
-    #     python_callable=run_create_bq_load_operator,
-    #     op_kwargs={"table_name": table},
-    # )
     load_task = GCSToBigQueryOperator(
         task_id=f"load_{table}_to_bq",
         bucket=table_params["bucket"],
         source_objects=[f"{GCS_PREFIX}/{table}_part_*.json"],
         destination_project_dataset_table=table_params["destination_project_dataset_table"],
-        # schema_fields="{{table_params['schema_fields']}}",
+        schema_object=f"{GCS_SCHEMA_PREFIX}/{table}_schema.json",
         source_format="NEWLINE_DELIMITED_JSON",
         write_disposition="WRITE_TRUNCATE",
-        autodetect=True,
+        autodetect=False,
         location=BQ_LOCATION,
         gcp_conn_id=GCP_CONN_ID,
     )
