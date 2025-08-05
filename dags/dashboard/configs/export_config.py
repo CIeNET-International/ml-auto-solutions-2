@@ -53,10 +53,11 @@ def get_export_operator(source_table: str):
   )
 
 
-def get_gcs_to_bq_operator(source_table: str, destination_bucket: str, destination_table: str):
+def get_gcs_to_bq_operator(source_table: str, source_bucket: str, destination_table: str):
+  # Loads files from Google Cloud Storage into BigQuery
   return GCSToBigQueryOperator(
       task_id=f"load_{source_table}_to_bq",
-      bucket=destination_bucket,
+      bucket=source_bucket,
       source_objects=[f"{GCS_PREFIX}/{source_table}_part_*.json"],
       destination_project_dataset_table=destination_table,
       schema_object=f"{GCS_SCHEMA_PREFIX}/{source_table}_schema.json",
