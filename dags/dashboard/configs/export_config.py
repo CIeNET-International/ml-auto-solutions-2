@@ -2,6 +2,8 @@ import json
 import logging
 
 import pandas as pd
+from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
 
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
@@ -41,6 +43,29 @@ PG_TO_BQ = {
     "jsonb": "STRING",
     "bytea": "BYTES",
 }
+
+
+def get_export_operator(source_table: str):
+  return PythonOperator(
+      task_id=f"export_{source_table}",
+      python_callable=export_table_schema_and_data,
+      op_kwargs={"table_name": source_table},
+  )
+
+
+def get_gcs_to_bq_operator(source_table: str, destination_bucket: str, destination_table: str):
+  return GCSToBigQueryOperator(
+      task_id=f"load_{source_table}_to_bq",
+      bucket=destination_bucket,
+      source_objects=[f"{GCS_PREFIX}/{source_table}_part_*.json"],
+      destination_project_dataset_table=destination_table,
+      schema_object=f"{GCS_SCHEMA_PREFIX}/{source_table}_schema.json",
+      source_format="NEWLINE_DELIMITED_JSON",
+      write_disposition="WRITE_TRUNCATE",
+      autodetect=False,
+      location=BQ_LOCATION,
+      gcp_conn_id=GCP_CONN_ID,
+  )
 
 
 def fetch_schema(table):
@@ -89,7 +114,7 @@ def safe_json(obj):
   Safely convert Python objects to JSON strings, return None if error.
   """
   try:
-    if type(obj) == memoryview:
+    if isinstance(obj, memoryview):
       obj = obj.tobytes()
     return json.dumps(obj)
   except Exception as e:

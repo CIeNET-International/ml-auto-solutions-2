@@ -1,11 +1,9 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
 from datetime import datetime
 from airflow.models.param import Param
 from airflow.models import Variable
 
-from dags.dashboard.configs.export_config import export_table_schema_and_data, GCS_PREFIX, GCS_SCHEMA_PREFIX, BQ_LOCATION, GCP_CONN_ID
+from dags.dashboard.configs import export_config
 
 # Scheduled time
 SCHEDULED_TIME = None
@@ -66,31 +64,10 @@ with DAG(
     params=params,
 ) as dag:
 
-  for table in TABLES:
+  for source_table in TABLES:
     # Define export task to run export_table Python function
-    export_task = PythonOperator(
-        task_id=f"export_{table}",
-        python_callable=export_table_schema_and_data,
-        op_kwargs={"table_name": table},
-    )
-
-    destination_table = (
-        "{{ params['target_project_id'] }}.{{ params['target_bigquery_dataset'] }}.%s"
-        % (table)
-    )
-
-    load_task = GCSToBigQueryOperator(
-        task_id=f"load_{table}_to_bq",
-        bucket="{{ params['target_gcs_bucket'] }}",
-        source_objects=[f"{GCS_PREFIX}/{table}_part_*.json"],
-        destination_project_dataset_table=destination_table,
-        schema_object=f"{GCS_SCHEMA_PREFIX}/{table}_schema.json",
-        source_format="NEWLINE_DELIMITED_JSON",
-        write_disposition="WRITE_TRUNCATE",
-        autodetect=False,
-        location=BQ_LOCATION,
-        gcp_conn_id=GCP_CONN_ID,
-    )
-
+    export_task = export_config.get_export_operator(source_table)
+    destination_table = "{{ params['target_project_id'] }}.{{ params['target_bigquery_dataset'] }}.%s" % source_table
+    load_task = export_config.get_gcs_to_bq_operator(source_table, "{{ params['target_gcs_bucket'] }}", destination_table)
     # Set task dependency: export -> load
     export_task >> load_task
