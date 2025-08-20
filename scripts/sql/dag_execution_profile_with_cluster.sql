@@ -115,5 +115,4 @@ JOIN referenced_runs rr
 LEFT JOIN `amy_xlml_poc_2.dag_test_info` dti
   ON f.dag_id = dti.dag_id
  AND f.test_id = dti.test_id
-ORDER BY f.dag_id, f.start_offset_seconds;
 

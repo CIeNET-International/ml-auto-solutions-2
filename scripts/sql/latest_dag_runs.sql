@@ -7,8 +7,11 @@ WITH latest_runs AS (
     dr.execution_date,
     dr.start_date AS run_start_date,
     dr.end_date   AS run_end_date
-  FROM `amy_xlml_poc_2.dag_run` dr
-  WHERE dr.execution_date >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
+  FROM 
+    `amy_xlml_poc_2.dag_run` dr
+  WHERE 
+    dr.execution_date >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
+    AND dr.end_date IS NOT NULL
   QUALIFY ROW_NUMBER() OVER (PARTITION BY dr.dag_id ORDER BY dr.execution_date DESC) = 1
 ),
 

@@ -12,7 +12,8 @@ dag_runs AS (
   SELECT dr.dag_id, dr.run_id
   FROM `amy_xlml_poc_2.dag_run` dr
   JOIN `amy_xlml_poc_2.dag` dag ON dag.dag_id=dr.dag_id
-  WHERE dag.is_active = TRUE
+  --WHERE dag.is_active = TRUE
+  --WHERE dag.is_paused = FALSE
 ),
 
 -- Task-level success aggregation per run
@@ -44,7 +45,7 @@ top_level_tests AS (
     dag_id,
     COUNT(DISTINCT SPLIT(task_id, '.')[OFFSET(0)]) AS num_tests
   FROM `amy_xlml_poc_2.task_instance`
-  WHERE dag_id IN (SELECT dag_id FROM dag_with_tag)
+  --WHERE dag_id IN (SELECT dag_id FROM dag_with_tag)
   GROUP BY dag_id
 ),
 

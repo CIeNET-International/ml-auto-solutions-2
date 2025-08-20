@@ -50,7 +50,7 @@ def build_log_filter(dag_id, run_id, task_id_prefix, exec_date, start_time, end_
 def build_log_explorer_url(filter_str):
     """Generate URL-encoded Cloud Logging query URL."""
     encoded_filter = urllib.parse.quote(filter_str, safe='')
-    return f"{LOG_EXPLORER_HOST};query={encoded_filter}"
+    return f"{LOG_EXPLORER_HOST};query={encoded_filter}?project={LOGS_PROJECT_ID}"
 
 
 def query_logs(filter_str):
@@ -99,6 +99,7 @@ def save_to_gcs_and_load_bq(data, schema):
 
 
 def main():
+    start_date = datetime.now()
     bq_client = bigquery.Client(project=BQ_PROJECT_ID)
 
     query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME}`"
@@ -121,9 +122,10 @@ def main():
                 bigquery.SchemaField("timestamp", "TIMESTAMP"),
                 bigquery.SchemaField("payload", "STRING"),
                 bigquery.SchemaField("process", "STRING"),
+                bigquery.SchemaField("task_id", "STRING"),
                 bigquery.SchemaField("try_number", "STRING"),
                 bigquery.SchemaField("worker_id", "STRING"),
-                bigquery.SchemaField("workflow", "STRING"),
+                #bigquery.SchemaField("workflow", "STRING"),
             ]),
             bigquery.SchemaField("log_url_error", "STRING"),
             bigquery.SchemaField("log_url_all", "STRING")
@@ -150,6 +152,7 @@ def main():
         tests_data = []
         for test in row["tests"]:
             test_id = test["test_id"]
+            test_status = test["test_status"]
 
             if dag_id in HACKED_DAG_TIMES and test_id in HACKED_DAG_TIMES[dag_id].get("tests", {}):
                 hack_test = HACKED_DAG_TIMES[dag_id]["tests"][test_id]
@@ -170,7 +173,7 @@ def main():
             filter_exec_date = execution_date
 
             logs_entries = []
-            if not DAGS_TO_QUERY_LOGS or dag_id in DAGS_TO_QUERY_LOGS:
+            if (not DAGS_TO_QUERY_LOGS or dag_id in DAGS_TO_QUERY_LOGS) and (test_status != 'success'):
                 filter_str_error = build_log_filter(
                     dag_id, run_id, test_id, filter_exec_date,
                     test_start_date, end_with_padding,
@@ -185,8 +188,9 @@ def main():
                         "payload": e.payload if hasattr(e, "payload") else str(e),
                         "process": labels.get("process"),
                         "try_number": labels.get("try-number") or labels.get("try_number"),
+                        "task_id": labels.get("task-id") or labels.get("task_id"),
                         "worker_id": labels.get("worker-id") or labels.get("worker_id"),
-                        "workflow": labels.get("workflow")
+                        #"workflow": labels.get("workflow")
                     })
 
             filter_str_error = build_log_filter(
@@ -198,7 +202,7 @@ def main():
                 dag_id, run_id, test_id, filter_exec_date,
                 test_start_date, end_with_padding
             )
-            log_url_error = build_log_explorer_url(filter_str_error)
+            log_url_error = build_log_explorer_url(filter_str_error) if test_status != 'success' else ""
             log_url_all = build_log_explorer_url(filter_str_all)
 
             tests_data.append({
@@ -222,9 +226,11 @@ def main():
         })
 
     save_to_gcs_and_load_bq(output_data, schema)
+    end_date = datetime.now()
+    dur = end_date - start_date
+    print(f'start:{start_date}, end_date:{end_date}, duration:{dur} seconds')
 
 
 if __name__ == "__main__":
     main()
-
 
