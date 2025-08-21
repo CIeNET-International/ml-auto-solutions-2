@@ -18,9 +18,17 @@ WORKSHEET_NAME = 'unhealthy_clusters!A1'
 @task
 def append_to_sheet():
   hook = GSheetsHook(gcp_conn_id="google_cloud_default")
-  # Cluster | Issue | Error Message | BuganizerID
+  """
+  [
+  IssueType | Project ID | Cluster Name | Cluster Status | Cluster Status Message | Node Pool Name | Node Pool Status | Node 
+  Pool Status Message | Appended At
+  ]
+  """
   values = [
-    ["ml-auto-solution", "no issue", "no error"],
+    ["NodePool", "cloud-tpu-multipod-dev", "v4-128-bodaborg-us-central2-b", "RUNNING", "",
+     "v4-128-bodaborg-us-central2-b-np-3", "ERROR", "Something Wrrong", "2025-08-21T07:31:17.058472+00:00"],
+    ["Cluster", "tpu-prod-env-large-adhoc", "bodaborg-v6e-256", "NOT EXIST", "Cluster not found in GKE API.", "", "",
+     "", "2025-08-21T07:31:43.083588+00:00"]
   ]
   hook.append_values(
     spreadsheet_id=SPREADSHEET_ID,
