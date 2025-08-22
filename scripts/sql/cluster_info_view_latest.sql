@@ -61,7 +61,7 @@ SELECT
   cn.task_id,
   cn.run_id,
   cn.cluster_name,
-  REGEXP_EXTRACT(cn.task_id, r"([^.]+)") AS test_name,
+  REGEXP_EXTRACT(cn.task_id, r"([^.]+)") AS test_id,
   zn.region,      
   pn.project_name
 FROM

@@ -15,6 +15,20 @@ WITH latest_runs AS (
   QUALIFY ROW_NUMBER() OVER (PARTITION BY dr.dag_id ORDER BY dr.execution_date DESC) = 1
 ),
 
+-- Check last trial only
+last_task_status AS (
+  SELECT
+    ti.dag_id,
+    ti.run_id,
+    ti.task_id,
+    ti.start_date,
+    ti.end_date,
+    ti.state,
+    ROW_NUMBER() OVER (PARTITION BY ti.dag_id, ti.run_id, ti.task_id ORDER BY ti.try_number DESC) AS rn
+  FROM
+    `amy_xlml_poc_2.task_instance` AS ti
+),    
+    
 -- 2) Filter task_instance early + extract test_id
 ti_scoped AS (
   SELECT

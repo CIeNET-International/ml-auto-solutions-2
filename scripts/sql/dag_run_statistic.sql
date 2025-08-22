@@ -15,7 +15,21 @@ dag_runs AS (
   --WHERE dag.is_active = TRUE
   --WHERE dag.is_paused = FALSE
 ),
-
+    
+-- Check last trial only
+last_task_status AS (
+    SELECT
+      ti.dag_id,
+      ti.run_id,
+      ti.task_id,
+      ti.state,
+      ROW_NUMBER() OVER (PARTITION BY ti.dag_id, ti.run_id, ti.task_id ORDER BY ti.try_number DESC) AS rn
+    FROM
+      `amy_xlml_poc_2.task_instance` AS ti
+      JOIN dag_runs AS dr
+        ON ti.dag_id = dr.dag_id
+        AND ti.run_id = dr.run_id
+  ),    
 -- Task-level success aggregation per run
 task_status AS (
   SELECT 
@@ -23,7 +37,7 @@ task_status AS (
     ti.run_id,
     COUNT(*) AS total_tasks,
     SUM(CASE WHEN ti.state = 'success' THEN 1 ELSE 0 END) AS successful_tasks
-  FROM `amy_xlml_poc_2.task_instance` ti
+  FROM last_task_status ti
   JOIN dag_runs dr ON ti.dag_id = dr.dag_id AND ti.run_id = dr.run_id
   GROUP BY ti.dag_id, ti.run_id
 ),

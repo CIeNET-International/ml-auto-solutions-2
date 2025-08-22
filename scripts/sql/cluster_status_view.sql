@@ -6,7 +6,7 @@ WITH dag_with_tag AS (
 )
 SELECT
     civ.dag_id,
-    civ.test_name,
+    civ.test_id,
     gci.project_id,
     civ.cluster_name,
     civ.region,
@@ -24,5 +24,6 @@ LEFT JOIN
 LEFT JOIN
     dag_with_tag ON civ.dag_id = dag_with_tag.dag_id
 LEFT JOIN
-    `amy_xlml_poc_2.dag_test_info` dti ON civ.dag_id = dti.dag_id AND civ.test_name = dti.test_id;
+    `amy_xlml_poc_2.dag_test_info` dti ON civ.dag_id = dti.dag_id AND civ.test_id = dti.test_id;
+
 
