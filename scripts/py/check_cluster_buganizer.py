@@ -1,12 +1,20 @@
+import logging
+from typing import List, Any, Dict
+
+import gspread
+import proto
 from google.cloud import bigquery, container_v1, storage
 from google.api_core.exceptions import NotFound
 import json
 from datetime import datetime, timezone
 
+# from google.oauth2.gdch_credentials import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
+
 # --- Step 1: Config ---
-project_id = "cienet-cmcs"
-dataset_id = "amy_xlml_poc_prod"
-view_name = "cluster_view"
+PROJECT_ID = "cienet-cmcs"
+DATASET_ID = "amy_xlml_poc_prod"
+VIEW_NAME = "cluster_view"
 
 # --- Google Sheets Config ---
 GSPREAD_INSERT_ENABLED = False
@@ -14,30 +22,38 @@ GSPREAD_SHEET_ID = '1FkyzvC0HGxFPGjIpCV4pWHB_QFWUOtLPIlDfnBNvt4Q'
 GSPREAD_WORKSHEET_NAME = 'unhealthy_clusters'
 GSPREAD_CREDS_PATH = 'cienet-cmcs-86d8fc4f484f.json'
 
+SCOPES = [
+  "https://www.googleapis.com/auth/cloud-platform"
+]
+credentials = Credentials.from_service_account_file(
+      GSPREAD_CREDS_PATH,
+      scopes=SCOPES
+    )
+
 
 # --- Step 2: Get rows from BQ view ---
-def get_clusters_from_view():
-    client = bigquery.Client(project=project_id)
+def get_clusters_from_view() -> List[Any]:
+    client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
     query = f"""
         SELECT project_name, cluster_name
-        FROM `{project_id}.{dataset_id}.{view_name}`
+        FROM `{PROJECT_ID}.{DATASET_ID}.{VIEW_NAME}`
     """
     rows = list(client.query(query).result())
-    print(f"Fetched {len(rows)} rows from view.")
+    logging.info(f"Fetched {len(rows)} rows from view.")
     return rows
 
 
 # --- Step 3: List clusters from GKE API ---
-def list_clusters_for_project(project_id):
-    client = container_v1.ClusterManagerClient()
+def list_clusters_by_project(project_id) -> List[Any]:
+    client = container_v1.ClusterManagerClient(credentials=credentials)
     parent = f"projects/{project_id}/locations/-"
     response = client.list_clusters(request={"parent": parent})
     return response.clusters if response and response.clusters else []
 
 
 # --- Step 4: Get detailed cluster status ---
-def get_cluster_status(project_id, location, cluster_name):
-    client = container_v1.ClusterManagerClient()
+def get_cluster_status(project_id, location, cluster_name) -> Dict[str, Any]:
+    client = container_v1.ClusterManagerClient(credentials=credentials)
     name = f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
     request = container_v1.GetClusterRequest(name=name)
     cluster = client.get_cluster(request=request)
@@ -58,20 +74,19 @@ def get_cluster_status(project_id, location, cluster_name):
 
     return {
         "project_id": project_id,
-        "cluster_name": cluster_name,
         "region": location,
+        "cluster_name": cluster_name,
         "status": container_v1.Cluster.Status(cluster.status).name if cluster.status else "UNKNOWN",
         "status_message": cluster.status_message or None,
         "node_pools": node_pools_info,
     }
 
+
 # --- Gspread function ---
+# Credential from default
 def insert_gspread_rows(rows):
     try:
-        scope = ['https://spreadsheets.google.com/feeds',
-                 'https://www.googleapis.com/auth/drive']
-        creds = ServiceAccountCredentials.from_json_keyfile_name(GSPREAD_CREDS_PATH, scope)
-        gspread_client = gspread.authorize(creds)
+        gspread_client = gspread.authorize(credentials=credentials)
         sheet = gspread_client.open_by_key(GSPREAD_SHEET_ID)
         worksheet = sheet.worksheet(GSPREAD_WORKSHEET_NAME)
 
@@ -98,7 +113,7 @@ def main():
 
     for idx, project in enumerate(projects, 1):
         try:
-            clusters = list_clusters_for_project(project)
+            clusters = list_clusters_by_project(project)
             print(f"[{idx}/{len(projects)}] {project}: {len(clusters)} clusters")
             for c in clusters:
                 key = f"{project}::{c.name}"
