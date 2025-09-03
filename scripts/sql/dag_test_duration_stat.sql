@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_2.dag_test_duration_stat` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_test_duration_stat` AS
 WITH runs AS (
   SELECT
     dag_id,
@@ -6,8 +6,12 @@ WITH runs AS (
     execution_date,
     start_date AS run_start_date,
     end_date AS run_end_date
-  FROM `amy_xlml_poc_2.dag_run`
-  WHERE start_date >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
+  FROM `amy_xlml_poc_prod.dag_run` 
+  WHERE start_date IS NOT NULL
+    AND end_date IS NOT NULL
+    AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND CURRENT_TIMESTAMP() 
+    AND dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.ignore_dags`)
 ),
 -- All attempts for all tasks with test_id extracted
 task_attempts AS (
@@ -20,7 +24,7 @@ task_attempts AS (
     ti.state,
     ti.start_date,
     ti.end_date
-  FROM `amy_xlml_poc_2.task_instance` ti
+  FROM `amy_xlml_poc_prod.task_instance` ti
   JOIN runs r
     ON ti.dag_id = r.dag_id AND ti.run_id = r.run_id
 ),

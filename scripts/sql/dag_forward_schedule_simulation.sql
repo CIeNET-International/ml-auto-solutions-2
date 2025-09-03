@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_2.dag_forward_schedule_simulation` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_forward_schedule_simulation` AS
 WITH
 -- Fixed 00:00 UTC "today" and exclusive end at +7 days
 day0 AS (
@@ -28,7 +28,7 @@ dag_sch AS (
         schedule_interval
     END AS formatted_schedule
   FROM
-    `amy_xlml_poc_2.dag` 
+    `amy_xlml_poc_prod.dag` 
   WHERE schedule_interval IS NOT NULL
     AND LOWER(schedule_interval) != 'null'
     AND is_paused = FALSE
@@ -44,10 +44,10 @@ profiles AS (
     COALESCE(p.avg_successful_test_duration_seconds, p.avg_any_test_duration_seconds) AS test_duration_seconds,
     g.schedule_interval,
     COALESCE(ds.avg_duration_success_seconds, ds.avg_duration_any_seconds) AS dag_duration_seconds
-  FROM `amy_xlml_poc_2.dag_execution_profile_with_cluster` p
+  FROM `amy_xlml_poc_prod.dag_execution_profile_with_cluster` p
   JOIN dag_sch g
     ON p.dag_id = g.dag_id
-  JOIN `amy_xlml_poc_2.dag_duration_stat` ds
+  JOIN `amy_xlml_poc_prod.dag_duration_stat` ds
     ON p.dag_id = ds.dag_id
   WHERE p.cluster_name IS NOT NULL
     AND TRIM(p.cluster_name) != ''  -- skip unmapped tests
@@ -57,8 +57,12 @@ profiles AS (
 last_run AS (
   SELECT
     dr.dag_id,
-    MAX(dr.execution_date) AS last_exec
-  FROM `amy_xlml_poc_2.dag_run` dr
+    MAX(dr.start_date) AS last_exec
+  FROM `amy_xlml_poc_prod.dag_run` dr
+  WHERE dr.start_date IS NOT NULL
+    AND dr.end_date IS NOT NULL
+    AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND CURRENT_TIMESTAMP() 
   GROUP BY dr.dag_id
 ),
 

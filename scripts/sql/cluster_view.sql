@@ -1,11 +1,12 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_2.cluster_view` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.cluster_view` AS
 SELECT DISTINCT
+  --cluster_project as project_name,
   project_name,
-  cluster_name,
-  region
+  cluster_name
 FROM
-  `amy_xlml_poc_2.cluster_info_view_latest`
+   `amy_xlml_poc_prod.cluster_info_view_latest`
+--  `amy_xlml_poc_prod.test_cluster_mapping`
 WHERE
-  project_name IS NOT NULL
-  AND cluster_name IS NOT NULL
-  AND region IS NOT NULL;
+  --cluster_project IS NOT NULL AND 
+  project_name IS NOT NULL AND 
+  cluster_name IS NOT NULL

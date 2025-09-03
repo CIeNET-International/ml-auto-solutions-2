@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_2.dag_with_tests_unnest_view` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_with_tests_unnest_view` AS
 SELECT
   -- DAG-level fields
   ds.dag_id,
@@ -36,7 +36,7 @@ SELECT
   ts.last_success_start_date_dagrun AS test_last_success_start_date_dagrun,
   ts.last_success_end_date_dagrun AS test_last_success_end_date_dagrun,
   ts.last_success_duration_seconds_dagrun AS test_last_success_duration_seconds_dagrun
-FROM `amy_xlml_poc_2.dag_duration_stat` ds
-LEFT JOIN `amy_xlml_poc_2.dag_test_duration_stat` ts
+FROM `amy_xlml_poc_prod.dag_duration_stat` ds
+LEFT JOIN `amy_xlml_poc_prod.dag_test_duration_stat` ts
   ON ds.dag_id = ts.dag_id;
 

@@ -1,11 +1,11 @@
-CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_2.dag_run_status` AS
+CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_prod.dag_run_status` AS
 WITH
   dag_with_tag AS (
     SELECT
       dt.dag_id,
       ARRAY_AGG(name) AS tags
     FROM
-      `amy_xlml_poc_2.dag_tag` AS dt
+      `amy_xlml_poc_prod.dag_tag` AS dt
     GROUP BY
       dag_id
   ),
@@ -15,11 +15,15 @@ WITH
       dr.run_id,
       dr.start_date
     FROM
-      `amy_xlml_poc_2.dag_run` AS dr
-      JOIN `amy_xlml_poc_2.dag` AS dag
+      `amy_xlml_poc_prod.dag_run` AS dr
+      JOIN `amy_xlml_poc_prod.dag` AS dag
         ON dag.dag_id = dr.dag_id
     WHERE
-      dr.dag_id NOT IN ('airflow_monitoring', 'clean_up', 'airflow_to_bq_export','on_failure_actions_trigger')
+      dr.start_date IS NOT NULL
+    AND dr.end_date IS NOT NULL
+    AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+    AND CURRENT_TIMESTAMP()
+    AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.ignore_dags`)
   ),
   last_task_status AS (
     SELECT
@@ -29,7 +33,7 @@ WITH
       ti.state,
       ROW_NUMBER() OVER (PARTITION BY ti.dag_id, ti.run_id, ti.task_id ORDER BY ti.try_number DESC) AS rn
     FROM
-      `amy_xlml_poc_2.task_instance` AS ti
+      `amy_xlml_poc_prod.task_instance` AS ti
       JOIN dag_runs AS dr
         ON ti.dag_id = dr.dag_id
         AND ti.run_id = dr.run_id
@@ -66,7 +70,7 @@ WITH
         OFFSET(0)
       ]) AS num_tests
     FROM
-      `amy_xlml_poc_2.task_instance`
+      `amy_xlml_poc_prod.task_instance`
     GROUP BY
       dag_id
   ),
@@ -79,7 +83,7 @@ WITH
         dag_id,
         part
       FROM
-        `amy_xlml_poc_2.dag`,
+        `amy_xlml_poc_prod.dag`,
         UNNEST(SPLIT(owners, ',')) AS part
       WHERE
         LOWER(TRIM(part)) != 'airflow'
@@ -160,4 +164,4 @@ LEFT JOIN
 ON
   ddd.dag_id = dds.dag_id
   AND ds.date = dds.date
-
+  

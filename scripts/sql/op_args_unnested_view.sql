@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_2.op_args_unnested_view` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.op_args_unnested_view` AS
 WITH
   op_args_string AS (
     SELECT
@@ -8,7 +8,7 @@ WITH
       rendered_fields,
       JSON_VALUE(SAFE.PARSE_JSON(REPLACE(rendered_fields, '\\\'', '"')), '$.op_args') AS op_args
     FROM
-      `amy_xlml_poc_2.rendered_task_instance_fields`
+      `amy_xlml_poc_prod.rendered_task_instance_fields`
     WHERE
       rendered_fields like '%cluster_name%'      
   ),

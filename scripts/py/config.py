@@ -10,6 +10,8 @@ blob_path = "tmp/gke_cluster_info.jsonl"
 view_name = "cluster_view"
 table_id = "gke_cluster_info_2"
 table_id_metrics = "cluster_metrics"
+table_id_metrics_real = "cluster_metrics_real"
+table_id_metrics_nw = "cluster_metrics_nw"
 
 # Script behavior settings
 max_rows = 0 # Set <= 0 to fetch all rows; otherwise, limits the number of rows

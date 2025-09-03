@@ -1,8 +1,8 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_2.dag_execution_profile_with_cluster` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_execution_profile_with_cluster` AS
 -- DAGs that have at least one mapped test
 WITH qualifying_dags AS (
   SELECT DISTINCT dag_id
-  FROM `amy_xlml_poc_2.dag_test_info`
+  FROM `amy_xlml_poc_prod.cluster_info_view_latest`
 ),
 
 -- Choose reference run: last successful if present, else most recent run
@@ -11,16 +11,17 @@ last_runs AS (
     d.dag_id,
     COALESCE(d.last_success_run_id, lr.run_id) AS chosen_run_id,
     CASE WHEN d.last_success_run_id IS NOT NULL THEN TRUE ELSE FALSE END AS run_succ
-  FROM `amy_xlml_poc_2.dag_duration_stat` d
+  FROM `amy_xlml_poc_prod.dag_duration_stat` d
   LEFT JOIN (
     SELECT
       dr.dag_id,
       dr.run_id
-    FROM `amy_xlml_poc_2.dag_run` dr
+    FROM `amy_xlml_poc_prod.dag_run` dr
+    WHERE dr.start_date IS NOT NULL AND dr.end_date IS NOT NULL
     QUALIFY ROW_NUMBER() OVER (PARTITION BY dag_id ORDER BY execution_date DESC) = 1
   ) lr
     ON d.dag_id = lr.dag_id
-  WHERE d.dag_id IN (SELECT dag_id FROM qualifying_dags)
+  WHERE d.dag_id IN (SELECT dag_id FROM qualifying_dags) 
 ),
 
 -- Reference run timing details (formatted; no millis)
@@ -31,7 +32,7 @@ referenced_runs AS (
     FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', dr.start_date) AS start_date_fmt,
     FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', dr.end_date)   AS end_date_fmt,
     TIMESTAMP_DIFF(dr.end_date, dr.start_date, SECOND)       AS run_duration_seconds
-  FROM `amy_xlml_poc_2.dag_run` dr
+  FROM `amy_xlml_poc_prod.dag_run` dr
 ),
 
 -- Compute test start offsets from the chosen run (preserves parallelism)
@@ -41,8 +42,8 @@ task_offsets AS (
     ti.run_id,
     SPLIT(ti.task_id, '.')[OFFSET(0)] AS test_id,
     TIMESTAMP_DIFF(ti.start_date, dr.start_date, SECOND) AS start_offset_seconds
-  FROM `amy_xlml_poc_2.task_instance` ti
-  JOIN `amy_xlml_poc_2.dag_run` dr
+  FROM `amy_xlml_poc_prod.task_instance` ti
+  JOIN `amy_xlml_poc_prod.dag_run` dr
     ON ti.dag_id = dr.dag_id
    AND ti.run_id = dr.run_id
 ),
@@ -62,7 +63,7 @@ chosen_offsets AS (
 -- Full test universe for qualifying DAGs (ensures tests appear even if offset missing in chosen run)
 tests_in_scope AS (
   SELECT DISTINCT dag_id, test_id
-  FROM `amy_xlml_poc_2.dag_test_duration_stat`
+  FROM `amy_xlml_poc_prod.dag_test_duration_stat`
   WHERE dag_id IN (SELECT dag_id FROM qualifying_dags)
 ),
 
@@ -85,17 +86,19 @@ forecast AS (
   LEFT JOIN chosen_offsets co
     ON u.dag_id = co.dag_id
    AND u.test_id = co.test_id
-  LEFT JOIN `amy_xlml_poc_2.dag_test_duration_stat` ts
+  LEFT JOIN `amy_xlml_poc_prod.dag_test_duration_stat` ts
     ON u.dag_id = ts.dag_id
    AND u.test_id = ts.test_id
 )
 
+    
 -- Final: include ALL tests from qualifying DAGs; attach cluster_name per (dag_id, test_id)
 SELECT
   f.dag_id,
   lr.chosen_run_id AS run_id,
   f.test_id,
-  dti.cluster_name,  -- NULL for unmapped tests; mapped tests keep their cluster
+  dti.cluster_name,  
+  dti.project_name AS cluster_project,  
   lr.run_succ,
   rr.run_duration_seconds AS referenced_run_duration_seconds,
   f.start_offset_seconds,
@@ -112,7 +115,8 @@ JOIN last_runs lr
 JOIN referenced_runs rr
   ON lr.dag_id = rr.dag_id
  AND lr.chosen_run_id = rr.run_id
-LEFT JOIN `amy_xlml_poc_2.dag_test_info` dti
+LEFT JOIN `amy_xlml_poc_prod.cluster_info_view_latest` dti
   ON f.dag_id = dti.dag_id
  AND f.test_id = dti.test_id
+
 

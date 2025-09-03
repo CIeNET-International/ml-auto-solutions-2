@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_2.dag_duration_stat` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_duration_stat` AS
 WITH runs AS (
   SELECT
     dag_id,
@@ -6,12 +6,14 @@ WITH runs AS (
     execution_date,
     start_date AS run_start_date,
     end_date AS run_end_date
-  FROM `amy_xlml_poc_2.dag_run`
-  WHERE start_date >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 180 DAY)
+  FROM `amy_xlml_poc_prod.dag_run`
+  WHERE start_date is not null and end_date is not null
+    AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AND CURRENT_TIMESTAMP()
+    AND dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.ignore_dags`)
 ),
 dag_with_tag AS (
   SELECT dt.dag_id, ARRAY_AGG(dt.name) AS tags
-  FROM `amy_xlml_poc_2.dag_tag` dt
+  FROM `amy_xlml_poc_prod.dag_tag` dt
   GROUP BY dt.dag_id
 ),
 dag_cleaned_owners AS (
@@ -22,7 +24,7 @@ dag_cleaned_owners AS (
     SELECT
       dag_id,
       part
-    FROM `amy_xlml_poc_2.dag`,
+    FROM `amy_xlml_poc_prod.dag`,
     UNNEST(SPLIT(owners, ',')) AS part
     WHERE LOWER(TRIM(part)) != 'airflow'
   )
@@ -38,7 +40,7 @@ task_attempts AS (
     ti.state,
     ti.start_date,
     ti.end_date
-  FROM `amy_xlml_poc_2.task_instance` ti
+  FROM `amy_xlml_poc_prod.task_instance` ti
   JOIN runs r
     ON ti.dag_id = r.dag_id AND ti.run_id = r.run_id
 ),
