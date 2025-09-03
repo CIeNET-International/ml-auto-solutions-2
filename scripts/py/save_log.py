@@ -1,5 +1,6 @@
 import re
 import json
+from google.protobuf.json_format import MessageToDict, MessageToJson
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from google.cloud import bigquery, storage, logging_v2
@@ -10,92 +11,210 @@ from config_log import (
     LOG_QUERY_END_PADDING_SECONDS, LOG_QUERY_SEVERITY,
     HACKED_DAG_TIMES, DAGS_TO_QUERY_LOGS
 )
+import save_log_utils as utils
+import log_explorer_err_sentence as err_sentence
 
 
-def parse_zulu(dt_str):
-    """Parse Zulu-format datetime like 2025-08-10T00:00:00Z"""
-    return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-
-
-def extract_execution_date_from_run_id(run_id):
-    """Extract date from Airflow run_id like manual__2025-08-10T00:00:00+00:00"""
-    match = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", run_id)
-    if match:
-        return datetime.fromisoformat(match.group(1)).replace(tzinfo=timezone.utc)
-    return None
-
-def extract_date_string_from_run_id(run_id):
-  match = re.search(r'__(.*)', run_id)
-  if match:
-    return match.group(1)
-  return None
-
-def build_log_filter(dag_id, run_id, task_id_prefix, exec_date, start_time, end_time, severity=None):
-    extracted_duration = extract_date_string_from_run_id(run_id)
-    """Build log explorer filter string."""
-    filter_parts = [
-        f'resource.type="cloud_composer_environment"',
-        f'resource.labels.environment_name="ml-automation-solutions"',
-        f'labels.workflow="{dag_id}"',
-        f'labels.execution-date="{extracted_duration}"',
-        f'labels.task-id=~"^{task_id_prefix}.*"',
-        f'timestamp >= "{start_time.isoformat()}"',
-        f'timestamp <= "{end_time.isoformat()}"'
-    ]
-    if severity:
-        filter_parts.append(f'severity={severity}')
-    return "\n".join(filter_parts)
-
-
-def build_log_explorer_url(filter_str):
-    """Generate URL-encoded Cloud Logging query URL."""
-    encoded_filter = urllib.parse.quote(filter_str, safe='')
-    return f"{LOG_EXPLORER_HOST};query={encoded_filter}?project={LOGS_PROJECT_ID}"
-
-
-def query_logs(filter_str):
-    """Query logs from Cloud Logging."""
-    client = logging_v2.Client(project=LOGS_PROJECT_ID)
-    entries = list(client.list_entries(
-        filter_=filter_str,
-        order_by=logging_v2.DESCENDING  # kept as-is; code reverses later to get ascending
-    ))
-    return entries
-
-
-def json_serial(obj):
-    """JSON serializer for objects not serializable by default."""
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    raise TypeError(f"Type {type(obj)} not serializable")
-
-
-def save_to_gcs_and_load_bq(data, schema):
-    """Save data to GCS as NDJSON and load to BigQuery with truncate mode."""
-    storage_client = storage.Client(project=GCS_PROJECT_ID)
-    bq_client = bigquery.Client(project=BQ_PROJECT_ID)
-
-    timestamp_str = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    gcs_path = f"logs_export_{timestamp_str}.json"
-    bucket = storage_client.bucket(GCS_BUCKET_NAME)
-    blob = bucket.blob(gcs_path)
-
-    # Write as NDJSON (one JSON object per line)
-    ndjson_data = "\n".join(json.dumps(row, default=json_serial) for row in data)
-    blob.upload_from_string(ndjson_data, content_type="application/json")
-
-    uri = f"gs://{GCS_BUCKET_NAME}/{gcs_path}"
-    table_id = f"{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_DEST_TABLE}"
-
-    job_config = bigquery.LoadJobConfig(
-        schema=schema,
-        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
+def get_airflow_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, severity):
+    """Query and format Airflow logs."""
+    #filter_str_error = utils.build_log_filter(
+    #    dag_id, run_id, test_id, 
+    #    test_start_date, end_with_padding,
+    #    severity=severity
+    #)
+    filter_str_error = utils.build_log_filter_errors_plus_keywords(
+        dag_id, run_id, test_id, 
+        test_start_date, end_with_padding
     )
+    entries = utils.query_logs(filter_str_error, LOGS_PROJECT_ID, 500)
+    logs_entries = []
+    logs_entries_keywords = []
+    messages_keywords = set()
+    error_messages = set()
+    for e in reversed(entries):
+      severity = getattr(e, "severity", "DEFAULT")
+      if severity in ['ERROR', 'CRITICAL', 'ALERT', 'EMERGENCY']:
+        labels = e.labels or {}
+        payload_text = e.payload if hasattr(e, "payload") else str(e)
+        error_message = None
+        if "Traceback" in payload_text:
+            lines = payload_text.strip().split('\n')
+            error_message = lines[-1]
+            #print(f'error_msg:{error_message}')
+        else:
+            error_message = payload_text
+        if (error_message):    
+            error_messages.add(error_message)
+        logs_entries.append({
+            "timestamp": e.timestamp.isoformat() if e.timestamp else None,
+            "payload": payload_text,
+            "error_message": error_message,
+            "process": labels.get("process"),
+            "try_number": labels.get("try-number") or labels.get("try_number"),
+            "task_id": labels.get("task-id") or labels.get("task_id"),
+            "worker_id": labels.get("worker-id") or labels.get("worker_id"),
+        })
+      else:  
+          processed_one, messages_one = err_sentence.process_log_entry(e)
+          if processed_one:
+              logs_entries_keywords.extend(processed_one)
+          if messages_one:
+              messages_keywords.update(messages_one)
 
-    load_job = bq_client.load_table_from_uri(uri, table_id, job_config=job_config)
-    load_job.result()
-    print(f"Loaded {len(data)} rows to {table_id}.")
+
+    #logs_entries_keywords, messages_keywords = err_sentence.extract_error_messages(
+    #        utils.build_log_filter_keywords(dag_id, run_id, test_id, test_start_date, end_with_padding), 500)
+
+    return logs_entries, logs_entries_keywords, list(error_messages), list(messages_keywords)
+
+
+def get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, cluster_name, cluster_project):
+    workload_id = None
+    filter_str_workload_id = utils.build_log_filter_workload_id(
+        dag_id, run_id, test_id, 
+        test_start_date, end_with_padding
+    )
+    print(f"query log explorer workload_id")
+    pattern = re.compile(r'Returned value was: (\S+)')
+    entries_workload = utils.query_logs(filter_str_workload_id, LOGS_PROJECT_ID, 1)
+    for e in entries_workload:
+        payload_str = e.payload if hasattr(e, "payload") else str(e)
+        match = pattern.search(payload_str)
+        if match:
+            workload_id = match.group(1)
+            break
+
+    return workload_id
+
+def get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_project, workload_id):
+    """Query and format K8s logs."""
+    print(f'qeury k8s logs for workload_id:{workload_id},cluster_name:{cluster_name},project:{cluster_project}')
+    #print(f"query log explorer {filter_str_k8s}")
+    entries_k8s = utils.query_logs(filter_str_k8s, cluster_project, 50)
+    # K8s log processing logic as per the original code (mostly print statements)
+
+    messages = set()
+    for entry in entries_k8s:
+        #print("=== Log Entry ===")
+        #print(f"Log name: {entry.log_name}")
+        #print(f"Timestamp: {entry.timestamp}")
+        #print(f"Severity: {entry.severity}")
+        #print(type(entry))
+        #if hasattr(entry, "payload"):
+        #    print("Payload type:", type(entry.payload))
+        #    print("Payload content:", entry.payload)
+        #if hasattr(entry, "resource"):
+        #    print("Resource:", entry.resource)
+        #if hasattr(entry, "labels"):
+        #    print("Labels:", entry.labels)
+
+        payload = entry.payload
+
+        # Case 1: already a dict
+        if isinstance(payload, dict):
+            data = payload
+        # Case 2: string that looks like JSON
+        elif isinstance(payload, str):
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                data = {"message": payload}
+        else:
+            data = {"message": str(payload)}
+
+        # Now safely access nested fields
+        message = data.get("message")  # top-level "message"
+        #print("Message:", message)
+
+        if (message):
+            messages.add(message)
+        #print(f'k8s messages:{messages}')    
+
+        # comment out, Nested message are all None, not sure if further need.
+        # If "message" lives inside a nested object
+        #k8s_msg = (
+        #    data.get("jsonPayload", {})
+        #        .get("message")
+        #    if "jsonPayload" in data else None
+        #)
+        #print("Nested message:", k8s_msg)
+
+        # Debug: show keys available
+        #print("Available keys in payload:", list(data.keys()))     
+    return list(messages)
+
+
+def process_test(row, dag_id, run_id, execution_date, test):
+    """Process a single test, fetch logs, and build the output dictionary."""
+    test_id, test_start_date, test_end_date = utils.get_test_run_dates(dag_id, test)
+    test_status = test["test_status"]
+    cluster_project = test["cluster_project"]
+    cluster_name = test["cluster_name"]
+    accelerator_type = test["accelerator_type"]
+
+    if not test_start_date or not test_end_date:
+        print(f"Skipping {dag_id} / {test_id} due to missing start/end date.")
+        return None
+
+    end_with_padding = test_end_date + timedelta(seconds=LOG_QUERY_END_PADDING_SECONDS)
+
+    logs_entries = []
+    logs_keywords_entries = []
+    airflow_errors = []
+    airflow_keywords = []
+    k8s_messages = []
+    workload_id = None
+    log_url_k8s = ""
+
+    if (not DAGS_TO_QUERY_LOGS or dag_id in DAGS_TO_QUERY_LOGS) and (test_status != 'success'):
+        print(f"Processing {dag_id} / {test_id} test_duration:{test_start_date}-{test_end_date}")
+        logs_entries, logs_keywords_entries, airflow_errors, airflow_keywords = get_airflow_logs(
+                dag_id, run_id, test_id, test_start_date, end_with_padding, LOG_QUERY_SEVERITY)
+        
+        if cluster_name and cluster_project:
+            workload_id = get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, cluster_name, cluster_project)
+            if (workload_id):
+                filter_str_k8s = utils.build_log_filter_k8s(
+                    dag_id, run_id, test_id, 
+                    test_start_date, end_with_padding, cluster_name, workload_id)
+                #k8s_messages = get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_project, workload_id)
+                #if (k8s_messages):
+                log_url_k8s = utils.build_log_explorer_url(filter_str_k8s, cluster_project)
+        print(f'dag:{dag_id},test_id:{test_id},errors:{airflow_errors}')            
+        print(f'dag:{dag_id},test_id:{test_id},keywords:{airflow_keywords}')            
+        print(f'dag:{dag_id},test_id:{test_id},k8s_messages:{k8s_messages}')            
+
+
+    filter_str_error = utils.build_log_filter(
+        dag_id, run_id, test_id, 
+        test_start_date, end_with_padding,
+        severity=LOG_QUERY_SEVERITY
+    )
+    filter_str_all = utils.build_log_filter(
+        dag_id, run_id, test_id, 
+        test_start_date, end_with_padding
+    )
+    log_url_error = utils.build_log_explorer_url(filter_str_error, LOGS_PROJECT_ID) if test_status != 'success' else ""
+    log_url_all = utils.build_log_explorer_url(filter_str_all, LOGS_PROJECT_ID)
+
+    return {
+        "test_id": test_id,
+        "test_start_date": test_start_date,
+        "test_end_date": test_end_date,
+        "test_status": test["test_status"],
+        "cluster_project": cluster_project,
+        "cluster_name": cluster_name,
+        "accelerator_type": accelerator_type,
+        "workload_id": workload_id,
+        "logs": logs_entries,
+        "logs_keywords": logs_keywords_entries,
+        "airflow_errors": airflow_errors,
+        "airflow_keywords": airflow_keywords,
+        "k8s_messages": k8s_messages,
+        "log_url_error": log_url_error,
+        "log_url_all": log_url_all,
+        "log_url_k8s": log_url_k8s
+    }
 
 
 def main():
@@ -118,102 +237,48 @@ def main():
             bigquery.SchemaField("test_start_date", "TIMESTAMP"),
             bigquery.SchemaField("test_end_date", "TIMESTAMP"),
             bigquery.SchemaField("test_status", "STRING"),
+            bigquery.SchemaField("workload_id", "STRING"),
+            bigquery.SchemaField("cluster_project", "STRING"),
+            bigquery.SchemaField("cluster_name", "STRING"),
+            bigquery.SchemaField("accelerator_type", "STRING"),
             bigquery.SchemaField("logs", "RECORD", mode="REPEATED", fields=[
                 bigquery.SchemaField("timestamp", "TIMESTAMP"),
+                bigquery.SchemaField("payload", "STRING"),
+                bigquery.SchemaField("error_message", "STRING"),
+                bigquery.SchemaField("process", "STRING"),
+                bigquery.SchemaField("task_id", "STRING"),
+                bigquery.SchemaField("try_number", "STRING"),
+                bigquery.SchemaField("worker_id", "STRING"),
+            ]),
+
+            bigquery.SchemaField("logs_keywords", "RECORD", mode="REPEATED", fields=[
+                bigquery.SchemaField("timestamp", "TIMESTAMP"),
+                bigquery.SchemaField("severity", "STRING"),
+                bigquery.SchemaField("keywords", "STRING", mode="REPEATED"),
+                bigquery.SchemaField("sentence", "STRING"),
                 bigquery.SchemaField("payload", "STRING"),
                 bigquery.SchemaField("process", "STRING"),
                 bigquery.SchemaField("task_id", "STRING"),
                 bigquery.SchemaField("try_number", "STRING"),
                 bigquery.SchemaField("worker_id", "STRING"),
-                #bigquery.SchemaField("workflow", "STRING"),
             ]),
+            bigquery.SchemaField("airflow_errors", "STRING", mode="REPEATED"),
+            bigquery.SchemaField("airflow_keywords", "STRING", mode="REPEATED"),
+            bigquery.SchemaField("k8s_messages", "STRING", mode="REPEATED"),
             bigquery.SchemaField("log_url_error", "STRING"),
-            bigquery.SchemaField("log_url_all", "STRING")
+            bigquery.SchemaField("log_url_all", "STRING"),
+            bigquery.SchemaField("log_url_k8s", "STRING")
         ])
     ]
 
     for row in rows:
-        dag_id = row.dag_id
-        run_id = row.run_id
-
-        if dag_id in HACKED_DAG_TIMES:
-            hack_info = HACKED_DAG_TIMES[dag_id]
-            run_info = hack_info["run"]
-            execution_date = parse_zulu(run_info["execution"])
-            run_start_date = parse_zulu(run_info["start"])
-            run_end_date = parse_zulu(run_info["end"])
-            run_id = run_info.get("run_id", run_id)
-        else:
-            #continue
-            execution_date = extract_execution_date_from_run_id(run_id) or row.execution_date
-            run_start_date = row.run_start_date
-            run_end_date = row.run_end_date
-
+        dag_id, run_id, execution_date, run_start_date, run_end_date = utils.get_dag_run_info(row)
+        
         tests_data = []
         for test in row["tests"]:
-            test_id = test["test_id"]
-            test_status = test["test_status"]
-
-            if dag_id in HACKED_DAG_TIMES and test_id in HACKED_DAG_TIMES[dag_id].get("tests", {}):
-                hack_test = HACKED_DAG_TIMES[dag_id]["tests"][test_id]
-                test_start_date = parse_zulu(hack_test["start"])
-                test_end_date = parse_zulu(hack_test["end"])
-            else:
-                test_start_date = test["test_start_date"]
-                test_end_date = test["test_end_date"]
-
-            # Skip if either start or end is None
-            if not test_start_date or not test_end_date:
-                print(f"Skipping {dag_id} / {test_id} due to missing start/end date.")
-                continue
-
-            print(f"Processing {dag_id} / {test_id} test_duration:{test_start_date}-{test_end_date}")
-
-            end_with_padding = test_end_date + timedelta(seconds=LOG_QUERY_END_PADDING_SECONDS)
-            filter_exec_date = execution_date
-
-            logs_entries = []
-            if (not DAGS_TO_QUERY_LOGS or dag_id in DAGS_TO_QUERY_LOGS) and (test_status != 'success'):
-                filter_str_error = build_log_filter(
-                    dag_id, run_id, test_id, filter_exec_date,
-                    test_start_date, end_with_padding,
-                    severity=LOG_QUERY_SEVERITY
-                )
-                print(f"query log explorer {filter_str_error}")
-                entries = query_logs(filter_str_error)
-                for e in reversed(entries):
-                    labels = e.labels or {}
-                    logs_entries.append({
-                        "timestamp": e.timestamp.isoformat() if e.timestamp else None,
-                        "payload": e.payload if hasattr(e, "payload") else str(e),
-                        "process": labels.get("process"),
-                        "try_number": labels.get("try-number") or labels.get("try_number"),
-                        "task_id": labels.get("task-id") or labels.get("task_id"),
-                        "worker_id": labels.get("worker-id") or labels.get("worker_id"),
-                        #"workflow": labels.get("workflow")
-                    })
-
-            filter_str_error = build_log_filter(
-                dag_id, run_id, test_id, filter_exec_date,
-                test_start_date, end_with_padding,
-                severity=LOG_QUERY_SEVERITY
-            )
-            filter_str_all = build_log_filter(
-                dag_id, run_id, test_id, filter_exec_date,
-                test_start_date, end_with_padding
-            )
-            log_url_error = build_log_explorer_url(filter_str_error) if test_status != 'success' else ""
-            log_url_all = build_log_explorer_url(filter_str_all)
-
-            tests_data.append({
-                "test_id": test_id,
-                "test_start_date": test_start_date,
-                "test_end_date": test_end_date,
-                "test_status": test["test_status"],
-                "logs": logs_entries,
-                "log_url_error": log_url_error,
-                "log_url_all": log_url_all
-            })
+            test_data = process_test(row, dag_id, run_id, execution_date, test)
+            if test_data:
+                tests_data.append(test_data)
 
         output_data.append({
             "dag_id": dag_id,
@@ -225,7 +290,7 @@ def main():
             "tests": tests_data
         })
 
-    save_to_gcs_and_load_bq(output_data, schema)
+    utils.save_to_gcs_and_load_bq(output_data, schema, BQ_DEST_TABLE)
     end_date = datetime.now()
     dur = end_date - start_date
     print(f'start:{start_date}, end_date:{end_date}, duration:{dur} seconds')
@@ -233,4 +298,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
