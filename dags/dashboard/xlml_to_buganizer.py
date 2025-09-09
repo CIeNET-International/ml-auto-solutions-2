@@ -122,11 +122,7 @@ def print_failed_cluster_info(cluster_status_rows):
         "cluster_name": cluster_status_row[2],
         "status": cluster_status_row[3],
         "status_message": cluster_status_row[4],
-        "node_pools": {
-            "name": cluster_status_row[5],
-            "status": cluster_status_row[6],
-            "status_message": cluster_status_row[7],
-        },
+        "node_pools": cluster_status_row[5],
         "load_time": cluster_status_row[8],
     }
     result_rows_list.append(result_row)
