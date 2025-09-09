@@ -118,13 +118,13 @@ def print_failed_cluster_info(cluster_status_rows):
   result_rows_list = []
   for cluster_status_row in cluster_status_rows:
     result_row = {
-        "type": cluster_status_row[1],
-        "project_id": cluster_status_row[2],
-        "cluster_name": cluster_status_row[3],
-        "status": cluster_status_row[4],
-        "status_message": cluster_status_row[5],
-        "node_pools": cluster_status_row[6],
-        "load_time": cluster_status_row[7],
+        "type": cluster_status_row[0],
+        "project_id": cluster_status_row[1],
+        "cluster_name": cluster_status_row[2],
+        "status": cluster_status_row[3],
+        "status_message": cluster_status_row[4],
+        "node_pools": cluster_status_row[5],
+        "load_time": cluster_status_row[6],
     }
     result_rows_list.append(result_row)
   logging.info(f"result: {result_rows_list}")
