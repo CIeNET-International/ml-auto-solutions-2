@@ -213,7 +213,7 @@ def insert_cluster_status_lists(
   try:
     #  Cannot query cluster info without location
     if not location:
-      raise NotFound
+      raise NotFound("The requested resource was not found on the server.")
     info = get_cluster_status(project_name, location, cluster_name)
     cluster_status = info["status"]
     cluster_status_message = info["status_message"]
