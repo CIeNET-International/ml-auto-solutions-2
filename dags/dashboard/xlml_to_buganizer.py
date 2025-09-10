@@ -37,14 +37,16 @@ credentials, _ = google.auth.default(
 # ================================================================
 # Step 1: Enums & Constants
 # ================================================================
-class ClusterType(enum.Enum):
+class IssueType(enum.Enum):
   CLUSTER = "Cluster"
   NODE_POOL = "NodePool"
+  CLUSTER_AND_NODE_POOL = "Cluster_Nodepool"
 
 
-class ClusterStatus(enum.Enum):
+class Status(enum.Enum):
   NOT_EXIST = "NOT EXIST"
   ERROR = "ERROR"
+  RUNNING = "RUNNING"
 
 
 NOT_FOUND_MSG = "Cluster not found in GKE API."
@@ -53,36 +55,19 @@ NOT_FOUND_MSG = "Cluster not found in GKE API."
 # ================================================================
 # Step 2: Helper Functions (Row builders / Logging / GSheet)
 # ================================================================
-def build_malfunction_cluster_row(
+def build_malfunction_row(
+    issue_type: IssueType,
     proj: str,
     cname: str,
     cluster_status: str,
     cluster_status_message: str,
     now_utc: str,
-) -> List[str]:
-  return [
-      ClusterType.CLUSTER.value,
-      proj,
-      cname,
-      cluster_status,
-      cluster_status_message,
-      "",
-      now_utc,
-  ]
-
-
-def build_malfunction_nodepool_row(
-    proj: str,
-    cname: str,
-    cluster_status: str,
-    cluster_status_message: str,
-    node_pools: List[Dict[str, Any]],
-    now_utc: str,
+    node_pools: List[Dict[str, Any]] | None = None,
 ) -> List[str]:
   if node_pools is None:
     node_pools = []
   return [
-      ClusterType.NODE_POOL.value,
+      issue_type.value,
       proj,
       cname,
       cluster_status,
@@ -90,27 +75,6 @@ def build_malfunction_nodepool_row(
       json.dumps(node_pools),
       now_utc,
   ]
-
-
-def build_malfunction_nodepool_json(
-    node_pools: List[Dict[str, Any]]
-) -> List[Dict[str, Any]]:
-  mal_node_pools = []
-  for node_pool in node_pools:
-    if node_pool["status"] != "RUNNING":
-      mal_node_pool = {
-          "name": node_pool["name"],
-          "status": node_pool["status"],
-          "status_message": node_pool["status_message"],
-          "version": node_pool["version"],
-          "autoscaling_enabled": node_pool["autoscaling_enabled"],
-          "initial_node_count": node_pool["initial_node_count"],
-          "machine_type": node_pool["machine_type"],
-          "disk_size_gb": node_pool["disk_size_gb"],
-          "preemptible": node_pool["preemptible"],
-      }
-      mal_node_pools.append(mal_node_pool)
-  return mal_node_pools
 
 
 def print_failed_cluster_info(cluster_status_rows):
@@ -223,7 +187,7 @@ def fetch_clusters_list():
   return clusters
 
 
-def fetch_clusters_location(clusters):
+def fetch_clusters_location(clusters) -> Dict[str, Any]:
   """Map project::cluster_name -> location"""
   cluster_locations = {}
   projects = set(cluster.project_name for cluster in clusters)
@@ -247,14 +211,36 @@ def insert_cluster_status_lists(
 ):
   """Insert both cluster + nodepool status into list"""
   try:
+    #  Cannot query cluster info without location
+    if not location:
+      raise NotFound
     info = get_cluster_status(project_name, location, cluster_name)
     cluster_status = info["status"]
     cluster_status_message = info["status_message"]
-    node_pools_data = info["node_pools"]
+    mal_node_pools = [
+        node_pool
+        for node_pool in info["node_pools"]
+        if node_pool["status"] != Status.RUNNING.value
+    ]
+    is_cluster_malfunction = cluster_status != Status.RUNNING.value
+    malfunction_node_pools_exist = len(mal_node_pools) > 0
 
-    if cluster_status != "RUNNING":
+    if is_cluster_malfunction and malfunction_node_pools_exist:
       status_list.append(
-          build_malfunction_cluster_row(
+          build_malfunction_row(
+              issue_type=IssueType.CLUSTER_AND_NODE_POOL,
+              proj=project_name,
+              cname=cluster_name,
+              cluster_status=cluster_status,
+              cluster_status_message=cluster_status_message,
+              node_pools=mal_node_pools,
+              now_utc=now_utc,
+          )
+      )
+    elif is_cluster_malfunction:
+      status_list.append(
+          build_malfunction_row(
+              issue_type=IssueType.CLUSTER,
               proj=project_name,
               cname=cluster_name,
               cluster_status=cluster_status,
@@ -262,10 +248,10 @@ def insert_cluster_status_lists(
               now_utc=now_utc,
           )
       )
-    mal_node_pools = build_malfunction_nodepool_json(node_pools_data)
-    if len(mal_node_pools) > 0:
+    elif malfunction_node_pools_exist:
       status_list.append(
-          build_malfunction_nodepool_row(
+          build_malfunction_row(
+              issue_type=IssueType.NODE_POOL,
               proj=project_name,
               cname=cluster_name,
               cluster_status=cluster_status,
@@ -276,10 +262,11 @@ def insert_cluster_status_lists(
       )
   except NotFound:
     status_list.append(
-        build_malfunction_cluster_row(
+        build_malfunction_row(
+            issue_type=IssueType.CLUSTER,
             proj=project_name,
             cname=cluster_name,
-            cluster_status=ClusterStatus.NOT_EXIST.value,
+            cluster_status=Status.NOT_EXIST.value,
             cluster_status_message=NOT_FOUND_MSG,
             now_utc=now_utc,
         )
@@ -289,17 +276,20 @@ def insert_cluster_status_lists(
         f"Error fetching details for {project_name}/{cluster_name}: {e}"
     )
     status_list.append(
-        build_malfunction_cluster_row(
+        build_malfunction_row(
+            issue_type=IssueType.CLUSTER,
             proj=project_name,
             cname=cluster_name,
-            cluster_status=ClusterStatus.ERROR.value,
+            cluster_status=Status.ERROR.value,
             cluster_status_message=str(e),
             now_utc=now_utc,
         )
     )
 
 
-def fetch_clusters_status(clusters_list, cluster_locations):
+def fetch_clusters_status(
+    clusters_list: List[Any], cluster_locations: Dict[str, Any]
+) -> List[Any]:
   """Fetch status for all clusters & node pools"""
   cluster_status_rows = []
   now_utc = datetime.now(timezone.utc).isoformat()
@@ -308,20 +298,10 @@ def fetch_clusters_status(clusters_list, cluster_locations):
     cluster_name = cluster.cluster_name
     key = f"{project_name}::{cluster_name}"
     location = cluster_locations.get(key)
-    if location:
-      insert_cluster_status_lists(
-          cluster_status_rows, project_name, location, cluster_name, now_utc
-      )
-    else:
-      cluster_status_rows.append(
-          build_malfunction_cluster_row(
-              proj=project_name,
-              cname=cluster_name,
-              cluster_status=ClusterStatus.NOT_EXIST.value,
-              cluster_status_message=NOT_FOUND_MSG,
-              now_utc=now_utc,
-          )
-      )
+    #  cluster_status_rows is parameter for output
+    insert_cluster_status_lists(
+        cluster_status_rows, project_name, location, cluster_name, now_utc
+    )
   print_failed_cluster_info(cluster_status_rows)
   return cluster_status_rows
 
@@ -330,7 +310,7 @@ def fetch_clusters_status(clusters_list, cluster_locations):
 # Step 6: Airflow Tasks
 # ================================================================
 @task
-def pull_clusters_status():
+def pull_clusters_status() -> List[Any]:
   target_clusters_list = fetch_clusters_list()
   target_clusters_locations = fetch_clusters_location(target_clusters_list)
   return fetch_clusters_status(target_clusters_list, target_clusters_locations)
