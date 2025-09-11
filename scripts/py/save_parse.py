@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 import uuid
 import os
+import re
 
 client = bigquery.Client()
 gcs_client = storage.Client()
@@ -100,6 +101,7 @@ def create_output_tables():
         bigquery.SchemaField("region", "STRING"),
         bigquery.SchemaField("zone", "STRING"),
         bigquery.SchemaField("accelerator_type", "STRING"),
+        bigquery.SchemaField("accelerator_family", "STRING"),
         bigquery.SchemaField("num_slices", "INT64"),
         bigquery.SchemaField("load_time", "TIMESTAMP"),
     ]
@@ -128,6 +130,24 @@ def load_from_gcs_and_truncate(table_id, gcs_uri):
     load_job = client.load_table_from_uri(gcs_uri, table_id, job_config=job_config)
     load_job.result()
     print(f"Loaded {gcs_uri} into {table_id} with TRUNCATE.")
+
+def categorize_op_kwargs(value: str) -> str:
+    """
+    Categorize accelerator string (from op_kwargs) into TPU, GPU, or CPU.
+    """
+    v = value.lower()
+
+    # TPU rules (ct*, explicit "tpu", or any v[0-9] family reference)
+    if re.search(r'(^ct|tpu|v[0-9]+)', v):
+        return "TPU"
+
+    # GPU rules (NVIDIA family names, accelerator models)
+    elif re.search(r'(nvidia|gpu|a100|h100|t4|v100|k80|l4|l40|l40s|p4|p100|h200)', v):
+        return "GPU"
+
+    # Default: CPU
+    else:
+        return "CPU"    
     
 def main():
     start_date = datetime.now()
@@ -163,6 +183,10 @@ def main():
         tasks = dag_data.get("dag", {}).get("tasks", [])
         merged_tasks = merge_tasks(tasks)
         for test_id, info in merged_tasks.items():
+            accelerator_type = info.get("accelerator_type")
+            acceleratoe_family = None
+            if accelerator_type:
+                accelerator_family = categorize_op_kwargs(accelerator_type)
             row = {
                 "dag_id": dag_id,
                 "test_id": info.get("test_id"),
@@ -171,6 +195,7 @@ def main():
                 "region": info.get("region"),
                 "zone": info.get("zone"),
                 "accelerator_type": info.get("accelerator_type"),
+                "accelerator_family": accelerator_family,
                 "num_slices": None,
                 "load_time": load_time,
             }

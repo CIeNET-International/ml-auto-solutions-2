@@ -32,6 +32,7 @@ GCS_PROJECT_ID = "cienet-cmcs"
 GCS_BUCKET_NAME = "amy-xlml-poc-prod"
 
 DAGS_TO_QUERY_LOGS = [
+    #"jax_ai_image_candidate_tpu_e2e",
     #"maxtext_muti_tier_p2_checkpointing",
     #"new_internal_stable_release_a3ultra_llama3.1-405b_256gpus_fp8_maxtext",
     #"maxstar_v5e_llama2_70b_daily",

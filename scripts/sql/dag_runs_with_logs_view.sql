@@ -9,8 +9,17 @@ SELECT
   dr.run_status,
   ARRAY(
   SELECT
-    AS STRUCT t.test_id, t.test_start_date, t.test_end_date, t.test_status, 
-    workload_id, cluster_project, cluster_name, accelerator_type,
+    AS STRUCT 
+    t.test_id, 
+    t.test_start_date, 
+    t.test_end_date, 
+    t.test_status, 
+    workload_id, 
+    cluster_project, 
+    cluster_name, 
+    accelerator_type,
+    accelerator_family,
+    machine_families,
     ARRAY_TO_STRING(
         ARRAY_CONCAT(
           -- Check if airflow_errors is not empty, then format it with a header

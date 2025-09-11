@@ -3,21 +3,10 @@ WITH
   latest_dag_run_cte AS (
     SELECT
       dag_id,
-      run_id
-    FROM
-      (
-        SELECT
-          dag_id,
-          run_id,
-          ROW_NUMBER() OVER (PARTITION BY dag_id ORDER BY execution_date DESC) AS rn
-        FROM
-          `amy_xlml_poc_prod.dag_run` dr
-        WHERE
-          dr.start_date is not null and dr.end_date is not null
-            AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AND CURRENT_TIMESTAMP()
-            AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.ignore_dags`)
-      ) AS subquery
-    WHERE subquery.rn = 1
+      runs.run_id
+  FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
+  LEFT JOIN UNNEST (base.runs) AS runs
+  WHERE runs.run_order_desc=1
   ),
   cluster_name_cte AS (
     SELECT
@@ -79,7 +68,15 @@ WITH
   )
 
 SELECT 
-  a.*, i.accelerator_type
+  a.dag_id,
+  a.task_id,
+  a.run_id,
+  a.cluster_name,
+  a.test_id,
+  a.region,
+  a.project_name,
+  i.accelerator_type,
+  i.accelerator_family
 FROM aggr a
 LEFT JOIN `amy_xlml_poc_prod.dag_test_info` i 
   ON a.dag_id = i.dag_id  AND a.test_id = i.test_id

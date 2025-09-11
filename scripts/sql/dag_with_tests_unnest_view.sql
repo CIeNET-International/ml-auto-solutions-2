@@ -4,6 +4,8 @@ SELECT
   ds.dag_id,
   ds.owners,
   ds.tags,  
+  ds.category,
+  ds.accelerator,  
   ds.success_run_count AS dag_success_run_count,
   ds.any_run_count AS dag_any_run_count,
   ds.avg_duration_success_seconds AS dag_avg_duration_success_seconds,

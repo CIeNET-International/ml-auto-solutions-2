@@ -1,35 +1,49 @@
 CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_duration_stat` AS
-WITH runs AS (
-  SELECT
-    dag_id,
-    run_id,
-    execution_date,
-    start_date AS run_start_date,
-    end_date AS run_end_date
-  FROM `amy_xlml_poc_prod.dag_run`
-  WHERE start_date is not null and end_date is not null
-    AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AND CURRENT_TIMESTAMP()
-    AND dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.ignore_dags`)
+
+WITH all_runs AS (
+  SELECT base.dag_id, runs.run_id, runs.execution_date, runs.start_date, runs.end_date, runs.is_passed, runs.run_order_desc, runs.is_passed_run_order_desc 
+  FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
+  LEFT JOIN UNNEST (base.runs) AS runs
+), 
+
+succ_runs AS (
+  SELECT base.dag_id, runs.run_id, runs.execution_date, runs.start_date, runs.end_date, runs.run_order_desc, runs.is_passed_run_order_desc 
+  FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
+  LEFT JOIN UNNEST (base.runs) AS runs
+  WHERE runs.is_passed=1
+), 
+
+all_tests AS (
+  SELECT base.dag_id, runs.run_id,runs.execution_date,  runs.start_date, runs.end_date, runs.is_passed, runs.run_order_desc, runs.is_passed_run_order_desc, 
+  tests.start_date test_start_date, tests.end_date test_end_date
+  FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
+  LEFT JOIN UNNEST (base.runs) AS runs
+  LEFT JOIN UNNEST (runs.tests) AS tests
+), 
+
+succ_runs_tests AS (
+  SELECT base.dag_id, runs.run_id, runs.execution_date, runs.start_date, runs.end_date, runs.is_passed, runs.run_order_desc, runs.is_passed_run_order_desc, 
+  tests.start_date test_start_date, tests.end_date test_end_date
+  FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
+  LEFT JOIN UNNEST (base.runs) AS runs
+  LEFT JOIN UNNEST (runs.tests) AS tests
+  WHERE runs.is_passed=1
+), 
+
+last_succ_runs_tests AS (
+  SELECT base.dag_id, runs.run_id, runs.execution_date, runs.start_date, runs.end_date, runs.is_passed, runs.run_order_desc, runs.is_passed_run_order_desc, 
+  tests.start_date test_start_date, tests.end_date test_end_date
+  FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
+  LEFT JOIN UNNEST (base.runs) AS runs
+  LEFT JOIN UNNEST (runs.tests) AS tests
+  WHERE runs.is_passed=1 and is_passed_run_order_desc=1
+), 
+
+dag_static AS (
+  SELECT dag_id, dag_owners, tags, category, accelerator
+  FROM `cienet-cmcs.amy_xlml_poc_prod.base`
 ),
-dag_with_tag AS (
-  SELECT dt.dag_id, ARRAY_AGG(dt.name) AS tags
-  FROM `amy_xlml_poc_prod.dag_tag` dt
-  GROUP BY dt.dag_id
-),
-dag_cleaned_owners AS (
-  SELECT
-    dag_id,
-    STRING_AGG(DISTINCT TRIM(part)) AS cleaned_owners
-  FROM (
-    SELECT
-      dag_id,
-      part
-    FROM `amy_xlml_poc_prod.dag`,
-    UNNEST(SPLIT(owners, ',')) AS part
-    WHERE LOWER(TRIM(part)) != 'airflow'
-  )
-  GROUP BY dag_id
-),
+
 -- All attempts for all tasks
 task_attempts AS (
   SELECT
@@ -41,45 +55,29 @@ task_attempts AS (
     ti.start_date,
     ti.end_date
   FROM `amy_xlml_poc_prod.task_instance` ti
-  JOIN runs r
+  JOIN all_runs r
     ON ti.dag_id = r.dag_id AND ti.run_id = r.run_id
 ),
--- Last attempt per task
-last_attempts AS (
-  SELECT *
-  FROM (
-    SELECT
-      *,
-      ROW_NUMBER() OVER (
-        PARTITION BY dag_id, run_id, task_id
-        ORDER BY try_number DESC
-      ) AS rn
-    FROM task_attempts
-  )
-  WHERE rn = 1
-),
--- Flag runs where all last attempts succeeded
-run_success_flags AS (
-  SELECT
-    dag_id,
-    run_id,
-    CASE WHEN COUNTIF(state != 'success') = 0 THEN 1 ELSE 0 END AS all_success_flag
-  FROM last_attempts
-  GROUP BY dag_id, run_id
-),
+
 -- Wall clock durations for successful runs
 dag_run_success AS (
   SELECT
     la.dag_id,
     la.run_id,
     TIMESTAMP_DIFF(MAX(la.end_date), MIN(la.start_date), MICROSECOND) / 1000000.0 AS wall_clock_duration_seconds
-  FROM last_attempts la
-  JOIN run_success_flags f
-    ON la.dag_id = f.dag_id AND la.run_id = f.run_id
-  WHERE f.all_success_flag = 1
+  FROM succ_runs la
   GROUP BY la.dag_id, la.run_id
 ),
 -- Wall clock durations for any runs (regardless of success)
+--dag_run_any AS (
+--  SELECT
+--    dag_id,
+--    run_id,
+--    TIMESTAMP_DIFF(MAX(end_date), MIN(start_date), SECOND) AS wall_clock_duration_seconds
+--  FROM all_runs
+--  GROUP BY dag_id, run_id
+--),
+
 dag_run_any AS (
   SELECT
     dag_id,
@@ -88,60 +86,52 @@ dag_run_any AS (
   FROM task_attempts
   GROUP BY dag_id, run_id
 ),
+
 -- Per-DAG aggregated stats
 dag_stats AS (
   SELECT
-    r.dag_id,
+    a.dag_id,
     COUNT(DISTINCT s.run_id) AS success_run_count,
     COUNT(DISTINCT a.run_id) AS any_run_count,
     AVG(s.wall_clock_duration_seconds) AS avg_duration_success_seconds,
     MAX(s.wall_clock_duration_seconds) AS max_duration_success_seconds,
     AVG(a.wall_clock_duration_seconds) AS avg_duration_any_seconds,
     MAX(a.wall_clock_duration_seconds) AS max_duration_any_seconds
-  FROM runs r
+  FROM dag_run_any a
   LEFT JOIN dag_run_success s
-    ON r.dag_id = s.dag_id AND r.run_id = s.run_id
-  LEFT JOIN dag_run_any a
-    ON r.dag_id = a.dag_id AND r.run_id = a.run_id
-  GROUP BY r.dag_id
+    ON a.dag_id = s.dag_id AND a.run_id = s.run_id
+  GROUP BY a.dag_id
 ),
+
 -- Last successful run (from tasks)
 last_success_run_tasks AS (
   SELECT
-    f.dag_id,
-    r.run_id,
-    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', r.execution_date) AS last_success_execution_date_tasks,
-    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', MIN(la.start_date)) AS last_success_start_date_tasks,
-    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', MAX(la.end_date)) AS last_success_end_date_tasks,
-    TIMESTAMP_DIFF(MAX(la.end_date), MIN(la.start_date), MICROSECOND) / 1000000.0 AS last_success_duration_seconds_tasks
-  FROM run_success_flags f
-  JOIN runs r
-    ON f.dag_id = r.dag_id AND f.run_id = r.run_id
-  JOIN last_attempts la
-    ON f.dag_id = la.dag_id AND f.run_id = la.run_id
-  WHERE f.all_success_flag = 1
-  GROUP BY f.dag_id, r.run_id, r.execution_date
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY f.dag_id ORDER BY r.execution_date DESC) = 1
+    dag_id,
+    run_id,
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', ANY_VALUE(execution_date)) AS last_success_execution_date_tasks,
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', MIN(test_start_date)) AS last_success_start_date_tasks,
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', MAX(test_end_date)) AS last_success_end_date_tasks,
+    TIMESTAMP_DIFF(MAX(test_end_date), MIN(test_start_date), MICROSECOND) / 1000000.0 AS last_success_duration_seconds_tasks
+  FROM last_succ_runs_tests 
+  GROUP BY dag_id, run_id
 ),
+
 -- Last successful run (from dag_run table)
 last_success_run_dagrun AS (
   SELECT
-    f.dag_id,
-    r.run_id AS last_success_run_id,
-    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', r.execution_date) AS last_success_execution_date_dagrun,
-    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', r.run_start_date) AS last_success_start_date_dagrun,
-    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', r.run_end_date) AS last_success_end_date_dagrun,
-    TIMESTAMP_DIFF(r.run_end_date, r.run_start_date, MICROSECOND) / 1000000.0 AS last_success_duration_seconds_dagrun
-  FROM run_success_flags f
-  JOIN runs r
-    ON f.dag_id = r.dag_id AND f.run_id = r.run_id
-  WHERE f.all_success_flag = 1
-  QUALIFY ROW_NUMBER() OVER (PARTITION BY f.dag_id ORDER BY r.execution_date DESC) = 1
+    dag_id,
+    run_id AS last_success_run_id,
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', execution_date) AS last_success_execution_date_dagrun,
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', start_date) AS last_success_start_date_dagrun,
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', end_date) AS last_success_end_date_dagrun,
+    TIMESTAMP_DIFF(end_date, start_date, MICROSECOND) / 1000000.0 AS last_success_duration_seconds_dagrun
+  FROM succ_runs
+  WHERE is_passed_run_order_desc=1
 )
 SELECT
   ds.dag_id,
-  d.cleaned_owners owners,
-  dag_with_tag.tags,    
+  d.dag_owners owners,
+  d.tags, category, accelerator,    
   ds.success_run_count,
   ds.any_run_count,
   round(ds.avg_duration_success_seconds, 0) AS avg_duration_success_seconds,
@@ -158,10 +148,8 @@ SELECT
   lsrd.last_success_end_date_dagrun,
   round(lsrd.last_success_duration_seconds_dagrun, 0) AS last_success_duration_seconds_dagrun
 FROM dag_stats ds
-LEFT JOIN dag_cleaned_owners d
+LEFT JOIN dag_static d
   ON ds.dag_id = d.dag_id
-LEFT JOIN dag_with_tag 
-  ON ds.dag_id = dag_with_tag.dag_id    
 LEFT JOIN last_success_run_tasks lsrt
   ON ds.dag_id = lsrt.dag_id
 LEFT JOIN last_success_run_dagrun lsrd
