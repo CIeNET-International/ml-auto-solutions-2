@@ -1,14 +1,23 @@
 
 CREATE OR REPLACE VIEW `amy_xlml_poc_prod.base_view` AS
-WITH dag_runs_ended AS (
+WITH 
+
+all_dags AS (
+  SELECT d.*
+  FROM `amy_xlml_poc_prod.dag` d
+  WHERE dag_id IN
+  (SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.serialized_dag`)
+),
+
+dag_runs_ended AS (
   SELECT dr.dag_id, dr.run_id, dr.execution_date, dr.start_date, dr.end_date
   FROM `amy_xlml_poc_prod.dag_run` dr
-  JOIN `amy_xlml_poc_prod.dag` dag ON dag.dag_id=dr.dag_id
+  JOIN all_dags dag ON dag.dag_id=dr.dag_id
   --WHERE dag.is_active = TRUE
   --WHERE dag.is_paused = FALSE
   WHERE dr.start_date is not null and dr.end_date is not null
     AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AND CURRENT_TIMESTAMP()
-    AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.ignore_dags`)
+    AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
 ),
     
 -- Check last trial only
@@ -235,24 +244,8 @@ dag_with_tag AS (
   GROUP BY dag_id  
 ),
 
-project_match AS (
-  SELECT
-    d.dag_id,
-    c.name AS category,
-    c.pri_order,
-    ROW_NUMBER() OVER (PARTITION BY d.dag_id ORDER BY c.pri_order) AS rn
-  FROM dag_with_tag d
-  LEFT JOIN `amy_xlml_poc_prod.config_project` c
-    ON EXISTS ( -- This is the problem line
-      SELECT 1
-      FROM UNNEST(d.tags) t
-      JOIN UNNEST(c.tag_names) ct
-      ON t = ct
-    )
-),
-
--- Create a list of all dag_id and project category matches
-project_matches AS (
+-- Create a list of all dag_id and category matches
+category_matches AS (
   SELECT
     d.dag_id,
     c.name AS category,
@@ -261,7 +254,7 @@ project_matches AS (
   FROM
     dag_with_tag d
   CROSS JOIN
-    `amy_xlml_poc_prod.config_project` c,
+    `amy_xlml_poc_prod.config_category` c,
     UNNEST(d.tags) AS tag1,
     UNNEST(c.tag_names) AS tag2
   WHERE
@@ -285,15 +278,17 @@ accel_matches AS (
     tag1 = tag2
 ),
 
-dag_with_tag_category AS (
+dag_static AS (
   SELECT
     d.dag_id,
     d.tags,
     p.category,
-    a.accelerator
+    a.accelerator,
+    b.description
   FROM dag_with_tag d
-  LEFT JOIN project_matches p ON d.dag_id = p.dag_id AND p.rn = 1
+  LEFT JOIN category_matches p ON d.dag_id = p.dag_id AND p.rn = 1
   LEFT JOIN accel_matches a ON d.dag_id = a.dag_id AND a.rn = 1
+  JOIN all_dags b ON d.dag_id=b.dag_id
 )
 
 
@@ -306,6 +301,7 @@ SELECT
   dwt.tags AS tags,
   dwt.category AS category,
   dwt.accelerator AS accelerator,
+  dwt.description,
   tlt.test_ids,
   cnt.total_runs,
   cnt.passed_runs,
@@ -315,7 +311,7 @@ SELECT
   ard.runs AS runs
 FROM dag_sch_pause dsp
 LEFT JOIN dag_cleaned_owners dco ON dsp.dag_id = dco.dag_id
-LEFT JOIN dag_with_tag_category dwt ON dsp.dag_id = dwt.dag_id
+LEFT JOIN dag_static dwt ON dsp.dag_id = dwt.dag_id
 LEFT JOIN top_level_tests tlt ON dsp.dag_id = tlt.dag_id
 LEFT JOIN all_run_details ard ON dsp.dag_id = ard.dag_id
 LEFT JOIN dag_run_cnt cnt ON dsp.dag_id = cnt.dag_id

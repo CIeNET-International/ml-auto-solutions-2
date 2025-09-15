@@ -12,10 +12,9 @@ SELECT
   t2.abnormal_cluster,
   t2.abnormal_nodepool,
   t2.cluster_check_time,
+  t2.abnormal_cluster_counts,
   t1.project_cluster_counts,
   t1.cluster_counts
 FROM 
   `amy_xlml_poc_prod.global_dag_summary_view` t1,
   `amy_xlml_poc_prod.global_cluster_view` t2
-
-
