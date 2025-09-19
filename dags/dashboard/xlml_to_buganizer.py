@@ -11,20 +11,20 @@ import google
 from airflow import DAG
 from airflow.decorators import task
 from airflow.models.param import Param
+from airflow.operators.python import get_current_context
 from airflow.providers.google.suite.hooks.sheets import GSheetsHook
 from google.api_core.exceptions import NotFound
 from google.cloud import bigquery, container_v1
 
 # --- Airflow DAG Schedule ---
-SCHEDULED_TIME = None
+SCHEDULED_TIME = "0 */4 * * *"  # Per 4 hours
 
 # --- BigQuery Config ---
 DEFAULT_PROJECT_ID = "cienet-cmcs"
 DEFAULT_DATASET_ID = "amy_xlml_poc_prod"
-BQ_VIEW_NAME = "cluster_view"
 
 # --- Google Sheets Config ---
-GSPREAD_INSERT_ENABLED = False
+GSPREAD_INSERT_ENABLED = True
 DEFAULT_GSPREAD_SHEET_ID = "1FkyzvC0HGxFPGjIpCV4pWHB_QFWUOtLPIlDfnBNvt4Q"
 GSPREAD_WORKSHEET_NAME = "unhealthy_clusters"
 
@@ -94,13 +94,13 @@ def print_failed_cluster_info(cluster_status_rows):
   logging.info(f"result: {result_rows_list}")
 
 
-def insert_gspread_rows(rows: List[List[str]]):
+def insert_gspread_rows(rows: List[List[str]], sheet_id: str):
   """Insert rows into Google Sheet via Airflow GSheetsHook"""
   try:
     hook = GSheetsHook(gcp_conn_id="google_cloud_default")
     print(f"Inserting {len(rows)} rows into Google Sheet...")
     hook.append_values(
-        spreadsheet_id=DEFAULT_GSPREAD_SHEET_ID,
+        spreadsheet_id=sheet_id,
         range_=GSPREAD_WORKSHEET_NAME,
         values=rows,
         insert_data_option="INSERT_ROWS",
@@ -116,10 +116,13 @@ def insert_gspread_rows(rows: List[List[str]]):
 # ================================================================
 def get_clusters_from_view() -> List[Any]:
   """Get cluster list from BigQuery view"""
-  client = bigquery.Client(project=DEFAULT_PROJECT_ID, credentials=credentials)
+  context = get_current_context()
+  project_id = context["params"]["source_bq_project_id"] or DEFAULT_PROJECT_ID
+  dataset_id = context["params"]["source_bq_dataset_id"] or DEFAULT_DATASET_ID
+  client = bigquery.Client(project=project_id, credentials=credentials)
   query = f"""
         SELECT project_name, cluster_name
-        FROM `{DEFAULT_PROJECT_ID}.{DEFAULT_DATASET_ID}.{BQ_VIEW_NAME}`
+        FROM `{project_id}.{dataset_id}.cluster_view`
     """
   rows = list(client.query(query).result())
   logging.info(f"Fetched {len(rows)} rows from view.")
@@ -319,7 +322,9 @@ def pull_clusters_status() -> List[Any]:
 @task
 def insert_gsheet_rows_task(gspread_rows_to_insert):
   if GSPREAD_INSERT_ENABLED and gspread_rows_to_insert:
-    insert_gspread_rows(gspread_rows_to_insert)
+    context = get_current_context()
+    google_sheet_id = context["params"]["target_gsheet_id"] or DEFAULT_GSPREAD_SHEET_ID
+    insert_gspread_rows(gspread_rows_to_insert, google_sheet_id)
 
 
 # ================================================================
