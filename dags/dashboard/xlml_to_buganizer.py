@@ -146,26 +146,28 @@ def get_cluster_status(project_id, location, cluster_name) -> Dict[str, Any]:
   name = f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
   request = container_v1.GetClusterRequest(name=name)
   cluster = client.get_cluster(request=request)
+  cluster_mode = "Autopilot" if cluster.autopilot.enabled else "Standard"
 
   node_pools_info = []
-  for np in cluster.node_pools:
-    node_pools_info.append(
-        {
-            "name": np.name,
-            "status": container_v1.NodePool.Status(np.status).name
-            if np.status
-            else "UNKNOWN",
-            "status_message": np.status_message or None,
-            "version": np.version,
-            "autoscaling_enabled": np.autoscaling.enabled
-            if np.autoscaling
-            else False,
-            "initial_node_count": np.initial_node_count,
-            "machine_type": np.config.machine_type if np.config else None,
-            "disk_size_gb": np.config.disk_size_gb if np.config else None,
-            "preemptible": np.config.preemptible if np.config else False,
-        }
-    )
+  if cluster_mode == "Standard":
+    for np in cluster.node_pools:
+      node_pools_info.append(
+          {
+              "name": np.name,
+              "status": container_v1.NodePool.Status(np.status).name
+              if np.status
+              else "UNKNOWN",
+              "status_message": np.status_message or None,
+              "version": np.version,
+              "autoscaling_enabled": np.autoscaling.enabled
+              if np.autoscaling
+              else False,
+              "initial_node_count": np.initial_node_count,
+              "machine_type": np.config.machine_type if np.config else None,
+              "disk_size_gb": np.config.disk_size_gb if np.config else None,
+              "preemptible": np.config.preemptible if np.config else False,
+          }
+      )
 
   return {
       "project_id": project_id,
@@ -323,7 +325,9 @@ def pull_clusters_status() -> List[Any]:
 def insert_gsheet_rows_task(gspread_rows_to_insert):
   if GSPREAD_INSERT_ENABLED and gspread_rows_to_insert:
     context = get_current_context()
-    google_sheet_id = context["params"]["target_gsheet_id"] or DEFAULT_GSPREAD_SHEET_ID
+    google_sheet_id = (
+        context["params"]["target_gsheet_id"] or DEFAULT_GSPREAD_SHEET_ID
+    )
     insert_gspread_rows(gspread_rows_to_insert, google_sheet_id)
 
 
