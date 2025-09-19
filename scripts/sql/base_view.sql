@@ -3,10 +3,7 @@ CREATE OR REPLACE VIEW `amy_xlml_poc_prod.base_view` AS
 WITH 
 
 all_dags AS (
-  SELECT d.*
-  FROM `amy_xlml_poc_prod.dag` d
-  WHERE dag_id IN
-  (SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.serialized_dag`)
+  SELECT * FROM `amy_xlml_poc_prod.all_dag_base_view`
 ),
 
 dag_runs_ended AS (
@@ -16,8 +13,9 @@ dag_runs_ended AS (
   --WHERE dag.is_active = TRUE
   --WHERE dag.is_paused = FALSE
   WHERE dr.start_date is not null and dr.end_date is not null
-    AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AND CURRENT_TIMESTAMP()
-    AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
+    --AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AND CURRENT_TIMESTAMP()
+   AND DATE(start_date,'UTC') BETWEEN DATE_SUB(CURRENT_DATE('UTC'), INTERVAL 30 DAY) AND DATE_SUB(CURRENT_DATE('UTC'), INTERVAL 1 DAY)
+   AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
 ),
     
 -- Check last trial only
@@ -193,115 +191,19 @@ all_run_details AS (
   FROM dag_run_base2 drb
   JOIN test_details_per_run tdpr ON drb.dag_id = tdpr.dag_id AND drb.run_id = tdpr.run_id
   GROUP BY drb.dag_id
-),
-
-dag_sch_pause AS (
-  SELECT
-    dag_id,
-    is_paused,
-    schedule_interval,
-    CASE
-      WHEN schedule_interval IS NULL OR schedule_interval = '' THEN schedule_interval
-      WHEN STARTS_WITH(schedule_interval, '{') AND JSON_VALUE(schedule_interval, '$.type') = 'timedelta' THEN
-        -- Logic for timedelta schedules
-        CONCAT(
-          CAST(JSON_VALUE(schedule_interval, '$.attrs.days') AS INT64), ' day, ',
-          LPAD(CAST(FLOOR(CAST(JSON_VALUE(schedule_interval, '$.attrs.seconds') AS INT64) / 3600) AS STRING), 2, '0'),
-          ':',
-          LPAD(CAST(FLOOR(MOD(CAST(JSON_VALUE(schedule_interval, '$.attrs.seconds') AS INT64), 3600) / 60) AS STRING), 2, '0'),
-          ':',
-          LPAD(CAST(MOD(CAST(JSON_VALUE(schedule_interval, '$.attrs.seconds') AS INT64), 60) AS STRING), 2, '0')
-        )
-      ELSE
-        -- Logic for cron expressions and other string-based schedules
-        schedule_interval
-    END AS formatted_schedule
-  FROM
-    `amy_xlml_poc_prod.dag` 
-  WHERE dag_id in (SELECT DISTINCT dag_id FROM dag_runs_ended)  
-),
-
--- DAG owners cleaned (removes "airflow")
-dag_cleaned_owners AS (
-  SELECT
-    dag_id,
-    STRING_AGG(DISTINCT TRIM(part)) AS cleaned_owners
-  FROM (
-    SELECT
-      dag_id,
-      part
-    FROM `amy_xlml_poc_prod.dag`,
-    UNNEST(SPLIT(owners, ',')) AS part
-    WHERE LOWER(TRIM(part)) != 'airflow'
-  )
-  GROUP BY dag_id
-),
-
--- DAGs with the specified tag
-dag_with_tag AS (
-  SELECT dt.dag_id,ARRAY_AGG(name) as tags
-  FROM `amy_xlml_poc_prod.dag_tag` dt
-  GROUP BY dag_id  
-),
-
--- Create a list of all dag_id and category matches
-category_matches AS (
-  SELECT
-    d.dag_id,
-    c.name AS category,
-    c.pri_order,
-    ROW_NUMBER() OVER (PARTITION BY d.dag_id ORDER BY c.pri_order) AS rn
-  FROM
-    dag_with_tag d
-  CROSS JOIN
-    `amy_xlml_poc_prod.config_category` c,
-    UNNEST(d.tags) AS tag1,
-    UNNEST(c.tag_names) AS tag2
-  WHERE
-    tag1 = tag2
-),
-
--- Create a list of all dag_id and accelerator matches
-accel_matches AS (
-  SELECT
-    d.dag_id,
-    c.name AS accelerator,
-    c.pri_order,
-    ROW_NUMBER() OVER (PARTITION BY d.dag_id ORDER BY c.pri_order) AS rn
-  FROM
-    dag_with_tag d
-  CROSS JOIN
-    `amy_xlml_poc_prod.config_accelerator` c,
-    UNNEST(d.tags) AS tag1,
-    UNNEST(c.tag_names) AS tag2
-  WHERE
-    tag1 = tag2
-),
-
-dag_static AS (
-  SELECT
-    d.dag_id,
-    d.tags,
-    p.category,
-    a.accelerator,
-    b.description
-  FROM dag_with_tag d
-  LEFT JOIN category_matches p ON d.dag_id = p.dag_id AND p.rn = 1
-  LEFT JOIN accel_matches a ON d.dag_id = a.dag_id AND a.rn = 1
-  JOIN all_dags b ON d.dag_id=b.dag_id
 )
 
 
 SELECT
-  dsp.dag_id,
-  dco.cleaned_owners AS dag_owners,
-  dsp.schedule_interval,
-  dsp.formatted_schedule AS formatted_schedule,
-  dsp.is_paused AS is_paused,
-  dwt.tags AS tags,
-  dwt.category AS category,
-  dwt.accelerator AS accelerator,
-  dwt.description,
+  d.dag_id,
+  d.dag_owners,
+  d.schedule_interval,
+  REGEXP_REPLACE(d.formatted_schedule, r'^"|"$', '') AS formatted_schedule,
+  d.is_paused,
+  d.tags,
+  d.category,
+  d.accelerator,
+  d.description,
   tlt.test_ids,
   cnt.total_runs,
   cnt.passed_runs,
@@ -309,14 +211,12 @@ SELECT
   FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S',le.start_date)  AS last_exec,  
   FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S',ls.start_date)  AS last_succ, 
   ard.runs AS runs
-FROM dag_sch_pause dsp
-LEFT JOIN dag_cleaned_owners dco ON dsp.dag_id = dco.dag_id
-LEFT JOIN dag_static dwt ON dsp.dag_id = dwt.dag_id
-LEFT JOIN top_level_tests tlt ON dsp.dag_id = tlt.dag_id
-LEFT JOIN all_run_details ard ON dsp.dag_id = ard.dag_id
-LEFT JOIN dag_run_cnt cnt ON dsp.dag_id = cnt.dag_id
-LEFT JOIN last_exec le ON dsp.dag_id = le.dag_id
-LEFT JOIN last_succ ls ON dsp.dag_id = ls.dag_id
-ORDER BY dsp.dag_id
+FROM all_dags d
+LEFT JOIN top_level_tests tlt ON d.dag_id = tlt.dag_id
+LEFT JOIN all_run_details ard ON d.dag_id = ard.dag_id
+LEFT JOIN dag_run_cnt cnt ON d.dag_id = cnt.dag_id
+LEFT JOIN last_exec le ON d.dag_id = le.dag_id
+LEFT JOIN last_succ ls ON d.dag_id = ls.dag_id
+ORDER BY d.dag_id
 
 

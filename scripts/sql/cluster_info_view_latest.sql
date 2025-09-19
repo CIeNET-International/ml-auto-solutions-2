@@ -12,7 +12,6 @@ prj_v1 AS (
   SELECT
     dag_id,
     test_id,
-    task_id,
     run_id,
     cluster_name,
     region,
@@ -30,7 +29,6 @@ no_prj_v1 AS (
   SELECT
     t1.dag_id,
     t1.test_id,
-    t1.task_id,
     t1.run_id,
     t1.cluster_name,
     t1.region,
@@ -54,7 +52,6 @@ prj_v2 AS (
   SELECT
     t3.dag_id,
     t3.test_id,
-    t3.task_id,
     t3.run_id,
     t3.cluster_name,
     t3.region,
@@ -72,7 +69,6 @@ no_prj_v2 AS (
   SELECT
     t1.dag_id,
     t1.test_id,
-    t1.task_id,
     t1.run_id,
     t1.cluster_name,
     t1.region,
@@ -105,7 +101,6 @@ SELECT
   r.dag_id,
   b.category, b.accelerator, b.tags, b.dag_owners, b.schedule_interval, b.formatted_schedule, b.is_paused,
   r.test_id,
-  r.task_id,
   r.run_id,
   r.cluster_name,
   r.region,

@@ -57,6 +57,7 @@ def main():
     	"tpu-prod-env-multipod",
 	    "cloud-tpu-multipod-dev",
 	    "supercomputer-testing",
+	    "cloud-ml-auto-solutions",
     ]
 
     print(f"Fetching clusters from {len(projects)} distinct projects...")

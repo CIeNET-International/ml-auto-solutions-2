@@ -4,6 +4,7 @@ from google.protobuf.json_format import MessageToDict, MessageToJson
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from google.cloud import bigquery, storage, logging_v2
+from urllib.parse import quote
 from config_log import (
     BQ_PROJECT_ID, BQ_DATASET, BQ_VIEW_NAME, BQ_DEST_TABLE,
     GCS_PROJECT_ID, GCS_BUCKET_NAME,
@@ -151,6 +152,8 @@ def process_test(row, dag_id, run_id, execution_date, test):
     cluster_project = test["cluster_project"]
     cluster_name = test["cluster_name"]
     accelerator_type = test["accelerator_type"]
+    accelerator_family = test["accelerator_family"]
+    machine_families = test["machine_families"]
 
     if not test_start_date or not test_end_date:
         print(f"Skipping {dag_id} / {test_id} due to missing start/end date.")
@@ -196,6 +199,25 @@ def process_test(row, dag_id, run_id, execution_date, test):
     )
     log_url_error = utils.build_log_explorer_url(filter_str_error, LOGS_PROJECT_ID) if test_status != 'success' else ""
     log_url_all = utils.build_log_explorer_url(filter_str_all, LOGS_PROJECT_ID)
+    log_url_graph = f"https://efdb2a1d6c2c435b8b7de77690c286a9-dot-us-central1.composer.googleusercontent.com/dags/{quote(dag_id)}/grid?num_runs=25&search={quote(dag_id)}&tab=graph&dag_run_id={quote(run_id)}&task_id={quote(test_id)}"
+    tasks_with_url = []
+    for task in test["tasks"]:
+        task_id = task["task_id"]
+        task_url_airflow = (
+            f"https://efdb2a1d6c2c435b8b7de77690c286a9-dot-us-central1.composer.googleusercontent.com/dags/{quote(dag_id)}/grid?search={quote(dag_id)}&num_runs=25&dag_run_id={quote(run_id)}&task_id={quote(task_id)}&tab=logs"    
+        )
+        tasks_with_url.append({
+            "task_id": task["task_id"],
+            "task_start_date": task["task_start_date"],
+            "task_end_date": task["task_end_date"],
+            "try_number": task["try_number"],
+            "state": task["state"],
+            "task_url_airflow": task_url_airflow,
+        })
+
+    #print(f'url_graph:{log_url_graph}')
+    #print(f'tasks:{tasks_with_url}')
+
 
     return {
         "test_id": test_id,
@@ -205,7 +227,10 @@ def process_test(row, dag_id, run_id, execution_date, test):
         "cluster_project": cluster_project,
         "cluster_name": cluster_name,
         "accelerator_type": accelerator_type,
+        "accelerator_family": accelerator_family,
+        "machine_families": machine_families,
         "workload_id": workload_id,
+        "tasks": tasks_with_url,
         "logs": logs_entries,
         "logs_keywords": logs_keywords_entries,
         "airflow_errors": airflow_errors,
@@ -213,14 +238,16 @@ def process_test(row, dag_id, run_id, execution_date, test):
         "k8s_messages": k8s_messages,
         "log_url_error": log_url_error,
         "log_url_all": log_url_all,
-        "log_url_k8s": log_url_k8s
+        "log_url_k8s": log_url_k8s,
+        "log_url_graph": log_url_graph
     }
 
 
-def main():
+def save():
     start_date = datetime.now()
     bq_client = bigquery.Client(project=BQ_PROJECT_ID)
 
+    #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME}` where dag_id='jax_ai_image_gpu_e2e'"
     query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME}`"
     rows = list(bq_client.query(query).result())
 
@@ -241,6 +268,16 @@ def main():
             bigquery.SchemaField("cluster_project", "STRING"),
             bigquery.SchemaField("cluster_name", "STRING"),
             bigquery.SchemaField("accelerator_type", "STRING"),
+            bigquery.SchemaField("accelerator_family", "STRING"),
+            bigquery.SchemaField("machine_families", "STRING", mode="REPEATED"),
+            bigquery.SchemaField("tasks", "RECORD", mode="REPEATED", fields=[
+                bigquery.SchemaField("task_id", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("task_start_date", "TIMESTAMP", mode="NULLABLE"),
+                bigquery.SchemaField("task_end_date", "TIMESTAMP", mode="NULLABLE"),
+                bigquery.SchemaField("try_number", "INTEGER", mode="NULLABLE"),
+                bigquery.SchemaField("state", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("task_url_airflow", "STRING"),
+            ]),
             bigquery.SchemaField("logs", "RECORD", mode="REPEATED", fields=[
                 bigquery.SchemaField("timestamp", "TIMESTAMP"),
                 bigquery.SchemaField("payload", "STRING"),
@@ -267,7 +304,8 @@ def main():
             bigquery.SchemaField("k8s_messages", "STRING", mode="REPEATED"),
             bigquery.SchemaField("log_url_error", "STRING"),
             bigquery.SchemaField("log_url_all", "STRING"),
-            bigquery.SchemaField("log_url_k8s", "STRING")
+            bigquery.SchemaField("log_url_k8s", "STRING"),
+            bigquery.SchemaField("log_url_graph", "STRING")
         ])
     ]
 
@@ -297,4 +335,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    save()

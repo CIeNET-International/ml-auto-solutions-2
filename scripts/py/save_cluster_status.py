@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import json
 import uuid
 import os
+import re
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from kubernetes import client, config
@@ -52,11 +53,40 @@ def get_cluster_status(project_id, location, cluster_name):
     name = f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
     request = container_v1.GetClusterRequest(name=name)
     cluster = client.get_cluster(request=request)
+    cluster_mode = "Autopilot" if cluster.autopilot.enabled else "Standard"
 
     node_pools_info = []
-    for np in cluster.node_pools:
+    if cluster_mode == "Standard":
+      for np in cluster.node_pools:
         #node_count = sum(ig.instance_count for ig in np.instance_groups) if np.instance_groups else 0
         node_count = None
+        #accelerators_list = [] #comment out, most of nodelpools have no such information
+        #accelerator_type = "CPU"
+        #if np.config.accelerators:
+        #    for accelerator in np.config.accelerators:
+        #        # Create a dictionary for each accelerator and append it to the list
+        #        accelerator_info = {
+        #            'accelerator_type': accelerator.accelerator_type,
+        #            'accelerator_count': accelerator.accelerator_count
+        #        }
+        #        accelerators_list.append(accelerator_info)
+        #        if "tpu" in accelerator.accelerator_type.lower():
+        #            accelerator_type = "TPU"
+        #        elif "gpu" in accelerator.accelerator_type.lower() or "nvidia" in accelerator.accelerator_type.lower():
+        #            accelerator_type = "GPU"
+        #elif "tpu" in np.config.machine_type.lower():
+        #    accelerator_type = "TPU"            
+        machine_type = np.config.machine_type if np.config else None
+        mt = machine_type.lower()
+        machine_family = "CPU"
+
+        # TPU rule
+        if re.search(r'(^ct|tpu|v2|v3|v4)', mt):
+            machine_family = "TPU"
+        # GPU rule
+        elif re.search(r'(nvidia|gpu|a100|t4|v100|k80|l4|h100)', mt):
+            machine_family = "GPU"
+
         node_pools_info.append({
             "name": np.name,
             "status": container_v1.NodePool.Status(np.status).name if np.status else "UNKNOWN",
@@ -66,6 +96,9 @@ def get_cluster_status(project_id, location, cluster_name):
             "initial_node_count": np.initial_node_count,
             "node_count": node_count,
             "machine_type": np.config.machine_type if np.config else None,
+            "machine_family": machine_family,
+            #"accelerators": accelerators_list,
+            #"accelerator_type": accelerator_type,
             "disk_size_gb": np.config.disk_size_gb if np.config else None,
             "preemptible": np.config.preemptible if np.config else False,
         })
@@ -75,6 +108,7 @@ def get_cluster_status(project_id, location, cluster_name):
         "cluster_name": cluster_name,
         "region": location,
         "status": container_v1.Cluster.Status(cluster.status).name if cluster.status else "UNKNOWN",
+        "cluster_mode": cluster_mode,
         "status_message": cluster.status_message or None,
         "node_pools": node_pools_info,
     }
@@ -130,6 +164,7 @@ def get_bq_schema():
     return [
         bigquery.SchemaField("project_id", "STRING", mode="REQUIRED"),
         bigquery.SchemaField("cluster_name", "STRING", mode="REQUIRED"),
+        bigquery.SchemaField("cluster_mode", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("op_region", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("region", "STRING", mode="NULLABLE"),
         bigquery.SchemaField("load_time", "TIMESTAMP"),
@@ -146,6 +181,15 @@ def get_bq_schema():
                 bigquery.SchemaField("initial_node_count", "INTEGER"),
                 bigquery.SchemaField("node_count", "INTEGER"),
                 bigquery.SchemaField("machine_type", "STRING"),
+                bigquery.SchemaField("machine_family", "STRING"),
+                #bigquery.SchemaField("accelerator_type", "STRING"),
+                #bigquery.SchemaField(
+                #    "accelerators", "RECORD", mode="REPEATED", 
+                #    fields=[
+                #        bigquery.SchemaField("accelerator_type", "STRING", mode="NULLABLE"),
+                #        bigquery.SchemaField("accelerator_count", "INTEGER", mode="NULLABLE"),
+                #    ],
+                #),
                 bigquery.SchemaField("disk_size_gb", "INTEGER"),
                 bigquery.SchemaField("preemptible", "BOOLEAN"),
             ]
@@ -257,6 +301,7 @@ def main():
 
         cluster_status = "NOT EXIST"
         cluster_status_message = None
+        cluster_mode = None
         node_pools_data = []
 
         now_utc = datetime.now(timezone.utc).isoformat()
@@ -271,6 +316,7 @@ def main():
                 info = get_cluster_status(proj, location, cname)
                 cluster_status = info["status"]
                 cluster_status_message = info["status_message"]
+                cluster_mode = info["cluster_mode"]
                 node_pools_data = info["node_pools"]
 
                 # Check cluster status for Gspread
@@ -302,6 +348,7 @@ def main():
         result_rows.append({
             "project_id": proj,
             "cluster_name": cname,
+            "cluster_mode": cluster_mode,
             "op_region": op_region,
             "region": location,
             "load_time": load_time,

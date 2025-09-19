@@ -7,6 +7,11 @@ PERSIST_PAIR = {
         'view_name': 'statistic_last_window_view',
         'table_name': 'statistic_last_window'
     },
+    'dag': {
+        'view_name': 'all_dag_view',
+        'table_name': 'all_dag'
+    },
+
     'profile': {
         'view_name': 'dag_execution_profile_with_cluster_view',
         'table_name': 'dag_execution_profile_with_cluster'

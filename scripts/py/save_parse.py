@@ -270,3 +270,4 @@ def truncate_table(table_name):
 
 if __name__ == "__main__":
     main()
+

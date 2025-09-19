@@ -57,9 +57,11 @@ def get_cluster_status(project_id, location, cluster_name) -> Dict[str, Any]:
     name = f"projects/{project_id}/locations/{location}/clusters/{cluster_name}"
     request = container_v1.GetClusterRequest(name=name)
     cluster = client.get_cluster(request=request)
+    cluster_mode = "Autopilot" if cluster.autopilot.enabled else "Standard"
 
     node_pools_info = []
-    for np in cluster.node_pools:
+    if cluster_mode == "Standard":
+      for np in cluster.node_pools:
         node_pools_info.append({
             "name": np.name,
             "status": container_v1.NodePool.Status(np.status).name if np.status else "UNKNOWN",
@@ -76,6 +78,7 @@ def get_cluster_status(project_id, location, cluster_name) -> Dict[str, Any]:
         "project_id": project_id,
         "region": location,
         "cluster_name": cluster_name,
+        "cluster_mode": cluster_mode,
         "status": container_v1.Cluster.Status(cluster.status).name if cluster.status else "UNKNOWN",
         "status_message": cluster.status_message or None,
         "node_pools": node_pools_info,
@@ -136,12 +139,13 @@ def main():
 
         cluster_status = "NOT EXIST"
         cluster_status_message = None
+        cluster_mode = None
         node_pools_data = []
 
         if not location:
-            # Matches fixed header: Issue Type, Project ID, Cluster Name, Cluster Status, Cluster Status Message, Node Pool Name, Node Pool Status, Node Pool Status Message, Appended at
+            # Matches fixed header: Issue Type, Project ID, Cluster Name, Mode, Cluster Status, Cluster Status Message, Node Pool Name, Node Pool Status, Node Pool Status Message, Appended at
             gspread_rows_to_insert.append([
-                "Cluster", proj, cname, "NOT EXIST", "Cluster not found in GKE API.", "", "", "", now_utc
+                "Cluster", proj, cname, cluster_mode, "NOT EXIST", "Cluster not found in GKE API.", "", "", "", now_utc
             ])
         else:
             try:
@@ -153,32 +157,33 @@ def main():
                 # Check cluster status for Gspread
                 if cluster_status != "RUNNING":
                     gspread_rows_to_insert.append([
-                        "Cluster", proj, cname, cluster_status, cluster_status_message, "", "", "", now_utc
+                        "Cluster", proj, cname, cluster_mode, cluster_status, cluster_status_message, "", "", "", now_utc
                     ])
 
                 # Check each node pool status for Gspread
                 for np in node_pools_data:
                     if np["status"] != "RUNNING":
                         gspread_rows_to_insert.append([
-                            "NodePool", proj, cname, cluster_status, cluster_status_message, np["name"], np["status"], np["status_message"], now_utc
+                            "NodePool", proj, cname, cluster_mode, cluster_status, cluster_status_message, np["name"], np["status"], np["status_message"], now_utc
                         ])
 
             except NotFound:
                 cluster_status = "NOT EXIST"
                 gspread_rows_to_insert.append([
-                    "Cluster", proj, cname, "NOT EXIST", "Cluster not found in GKE API.", "", "", "", now_utc
+                    "Cluster", proj, cname, cluster_mode, "NOT EXIST", "Cluster not found in GKE API.", "", "", "", now_utc
                 ])
             except Exception as e:
                 print(f"Error fetching details for {proj}/{cname}: {e}")
                 cluster_status = "ERROR"
                 cluster_status_message = str(e)
                 gspread_rows_to_insert.append([
-                    "Cluster", proj, cname, cluster_status, cluster_status_message, "", "", "", now_utc
+                    "Cluster", proj, cname, cluster_mode, cluster_status, cluster_status_message, "", "", "", now_utc
                 ])
 
         result_rows.append({
             "project_id": proj,
             "cluster_name": cname,
+            "cluster_mode": cluster_mode,
             "region": location,
             "load_time": load_time,
             "status": cluster_status,

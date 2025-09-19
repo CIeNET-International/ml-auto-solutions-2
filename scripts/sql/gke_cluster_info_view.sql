@@ -86,6 +86,7 @@ SELECT
     t1.cluster_name,
     t1.project_id,
     t1.region,
+    t1.cluster_mode,
     t2.machine_families,
     t1.status,
     t1.status_message,

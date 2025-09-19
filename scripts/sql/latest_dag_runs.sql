@@ -18,19 +18,44 @@ latest_runs_tests AS (
   WHERE run_order_desc=1
 ),
 
+tasks_enriched AS (
+  SELECT
+    b.dag_id,
+    b.run_id,
+    b.test_id,
+    ARRAY_AGG(STRUCT(
+      t.task_id AS task_id,
+      t.start_date AS task_start_date,
+      t.end_date AS task_end_date,
+      t.try_number AS try_number,
+      t.state AS state
+    ) ORDER BY t.start_date) AS tasks
+  FROM latest_runs_tests b
+  JOIN `amy_xlml_poc_prod.task_instance` t
+    ON b.dag_id = t.dag_id
+   AND b.run_id = t.run_id
+   AND b.test_id = SPLIT(t.task_id, '.')[OFFSET(0)]
+  GROUP BY b.dag_id, b.run_id, b.test_id
+),
+
 -- Build tests array and run_status from per-test rows
 run_agg AS (
   SELECT
-    dag_id,
-    run_id,
+    t1.dag_id,
+    t1.run_id,
     ARRAY_AGG(STRUCT(
-      test_id AS test_id,
-      test_start_date AS test_start_date,
-      test_end_date AS test_end_date,
-      IF(test_is_passed = 1, 'success', 'failed') AS test_status
-    ) ORDER BY test_start_date) AS tests,
-  FROM latest_runs_tests
-  GROUP BY dag_id, run_id
+      t1.test_id AS test_id,
+      t1.test_start_date AS test_start_date,
+      t1.test_end_date AS test_end_date,
+      IF(t1.test_is_passed = 1, 'success', 'failed') AS test_status,
+      t2.tasks AS tasks
+    ) ORDER BY t1.test_start_date) AS tests,
+  FROM latest_runs_tests AS t1
+  JOIN tasks_enriched AS t2
+    ON t1.dag_id = t2.dag_id
+   AND t1.run_id = t2.run_id
+   AND t1.test_id = t2.test_id
+  GROUP BY t1.dag_id, t1.run_id
 ),
 
 -- Cluster
@@ -43,6 +68,7 @@ run_agg_with_cluster AS (
       unnested_tests.test_start_date,
       unnested_tests.test_end_date,
       unnested_tests.test_status,
+      unnested_tests.tasks,
       t2.project_name AS cluster_project,
       t2.cluster_name,
       t2.accelerator_type, t2.accelerator_family,

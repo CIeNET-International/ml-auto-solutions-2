@@ -20,6 +20,7 @@ SELECT
     accelerator_type,
     accelerator_family,
     machine_families,
+    t.tasks,
     ARRAY_TO_STRING(
         ARRAY_CONCAT(
           -- Check if airflow_errors is not empty, then format it with a header
@@ -32,9 +33,8 @@ SELECT
         -- Join the formatted strings with a newline
         '\n'
       ) AS logs_string,
-  t.log_url_error, t.log_url_all, t.log_url_k8s
+  t.log_url_error, t.log_url_all, t.log_url_k8s,log_url_graph
   FROM
     UNNEST(dr.tests) AS t ) AS tests
 FROM
   `cienet-cmcs.amy_xlml_poc_prod.dag_runs_with_logs` AS dr;
-

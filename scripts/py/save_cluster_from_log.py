@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 from google.cloud import bigquery, storage, logging_v2
 from config_log import (
     BQ_PROJECT_ID, BQ_DATASET, BQ_VIEW_NAME_NO_CLUSTER, BQ_DEST_TABLE_CLUSTER_FROM_LOG,
-    GCS_PROJECT_ID, GCS_BUCKET_NAME,
-    LOGS_PROJECT_ID
+    GCS_PROJECT_ID, GCS_BUCKET_NAME
 )
 
+LOG_PROJECT_ID = "cloud-ml-auto-solutions"
 
 def parse_zulu(dt_str):
     """Parse Zulu-format datetime like 2025-08-10T00:00:00Z"""
@@ -45,8 +45,11 @@ def build_log_filter(dag_id, run_id, task_id_prefix, exec_date, start_time, end_
         f'labels.task-id=~"^{task_id_prefix}.*"',
         f'timestamp >= "{start_time.isoformat()}"',
         f'timestamp <= "{end_time.isoformat()}"',
-        f'SEARCH("{search_keyword}")'
+        #f'SEARCH("{search_keyword}")'
     ]
+    search_condition = f'(textPayload: "response.json" OR SEARCH("{search_keyword}"))'
+    filter_parts.append(search_condition)
+
     return "\n".join(filter_parts)
 
 def query_logs(filter_str, log_project_id, page_size):
@@ -86,6 +89,66 @@ def save_to_gcs_and_load_bq(data, schema):
     load_job.result()
     print(f"Loaded {len(data)} rows to {table_id}.")
 
+def test():
+    filter_parts = [
+        f'resource.type="cloud_composer_environment"',
+        f'resource.labels.environment_name="camilo-orbax-dev"',
+        f'timestamp>="2025-09-18T21:08:46.608Z"'
+    ]
+    search_condition = f'(textPayload: "xlml_metadata")'
+    filter_parts.append(search_condition)
+
+    filter_str = "\n".join(filter_parts)
+    print(f'{filter_str}')
+
+    entries = query_logs(filter_str, LOG_PROJECT_ID, 10)
+    for e in entries:
+        payload_str = e.payload if hasattr(e, "payload") else str(e)
+
+        if 'xlml_metadata' in payload_str:
+            parsed_result = parse_cluster_metadata(payload_str)
+            if parsed_result:
+                import pprint
+                pprint.pprint(parsed_result)    
+                break
+
+
+
+def parse_cluster_metadata(payload_string):
+    # 1. Check for and remove the 'xlml_metadata ' prefix.
+    #    The `strip()` method is used to remove any leading/trailing whitespace.
+    cleaned_string = payload_string.lstrip().replace('xlml_metadata ', '', 1).strip()
+
+    try:
+        # 2. Parse the cleaned string as a JSON object.
+        metadata = json.loads(cleaned_string)
+
+        # 3. Extract and organize the relevant fields.
+        parsed_data = {
+            "cluster_info": {
+                "project": metadata.get("cluster_project"),
+                "zone": metadata.get("zone"),
+                "name": metadata.get("cluster_name"),
+                "accelerator_type": metadata.get("accelerator_type"),
+                "num_slices": metadata.get("num_slices")
+            },
+            "workload_info": {
+                "workload_id": metadata.get("workload_id"),
+                "benchmark_id": metadata.get("benchmark_id"),
+                "task_id": metadata.get("task_id"),
+                "docker_image": metadata.get("docker_image"),
+                "gcs_path": metadata.get("gcs_path")
+            }
+        }
+        return parsed_data
+    except json.JSONDecodeError as e:
+        print(f"Error: Failed to decode JSON payload after cleaning. Details: {e}")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return None
+    return parsed_data
+
 
 def get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_end_date):
     cluster_name = None
@@ -96,16 +159,20 @@ def get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_en
     )
 
     payload_str = None
+    not_from_cred = True
     pattern = re.compile(r"gcloud container clusters get-credentials\s+(\S+)")
-    entries = query_logs(filter_str, LOGS_PROJECT_ID, 1)
+    entries = query_logs(filter_str, LOG_PROJECT_ID, 10)
     for e in entries:
         payload_str = e.payload if hasattr(e, "payload") else str(e)
         match = pattern.search(payload_str)
         if match:
             cluster_name = match.group(1)
+            not_from_cred = False
             break
+        elif 'response.json' in payload_str:
+            project_name, cluster_name = parse_gke_info_from_json(payload_str)
 
-    if (cluster_name):
+    if (cluster_name and not_from_cred):
         #pattern_project = re.compile(r"gcloud config set project (\S+)")
         #pattern_project = re.compile(r"gcloud config set project\s+([^']+)")
         pattern_project_1 = re.compile(r"gcloud\s+config\s+set\s+project\s+([a-z0-9-]+)")
@@ -124,6 +191,53 @@ def get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_en
                 break
     return cluster_name, project_name
 
+def parse_gke_info_from_json(log_string):
+    """
+    Parses a log string to extract the GKE cluster name and its project.
+
+    Args:
+        log_string: The log entry as a string.
+
+    Returns:
+        A tuple containing (project_id, gke_cluster_name) or (None, None) if not found.
+    """
+    print(f'in gke_json parse......')
+    try:
+        # Use regex to extract the JSON-like part of the string.
+        # This part assumes the log message is a Python dictionary representation.
+        match = re.search(r"(\{.*\})", log_string)
+        if not match:
+            return None, None
+
+        # Convert the string representation of a dictionary to a valid JSON string.
+        # This handles the use of single quotes and the trailing comma issue.
+        json_string = match.group(1).replace("'", '"')
+
+        # Handle the case where the log string might have a trailing part that breaks JSON.
+        # For example, "..." or a closing brace that's not part of the dictionary.
+        # This regex will only capture up to the point of the valid JSON structure.
+        # Find the last closing brace and slice the string up to that point.
+        last_brace_index = json_string.rfind('}')
+        if last_brace_index != -1:
+            json_string = json_string[:last_brace_index+1]
+
+        # Safely load the JSON string into a Python dictionary.
+        data = json.loads(json_string)
+
+        # Access the nested keys to get the GKE cluster path.
+        gke_path = data.get('config', {}).get('gkeCluster')
+
+        if gke_path:
+            # Split the path to get the project and cluster name.
+            parts = gke_path.split('/')
+            project_id = parts[1]
+            cluster_name = parts[-1]
+            return project_id, cluster_name
+
+    except (json.JSONDecodeError, AttributeError, IndexError) as e:
+        print(f"Error parsing log: {e}")
+        return None, None
+
 def process_test(dag_id, run_id, execution_date, test_id, test_start_date, test_end_date):
     """Process a single test, fetch logs, and build the output dictionary."""
     project_name = None
@@ -135,12 +249,12 @@ def process_test(dag_id, run_id, execution_date, test_id, test_start_date, test_
         return cluster_name, project_name, region
 
     cluster_name, project_name = get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_end_date)
-    print(f'dag:{dag_id},test_id:{test_id},cluster_name:{cluster_name},project:{project_name}')            
+    #print(f'dag:{dag_id},test_id:{test_id},cluster_name:{cluster_name},project:{project_name}')            
 
     return cluster_name, project_name, region
 
 
-def main():
+def save():
     start_date = datetime.now()
     bq_client = bigquery.Client(project=BQ_PROJECT_ID)
 
@@ -149,7 +263,6 @@ def main():
 
     schema = [
         bigquery.SchemaField("dag_id", "STRING"),
-        bigquery.SchemaField("task_id", "STRING"),
         bigquery.SchemaField("test_id", "STRING"),
         bigquery.SchemaField("run_id", "STRING"),
         bigquery.SchemaField("cluster_name", "STRING"),
@@ -161,11 +274,12 @@ def main():
     for row in rows:
         
         cluster_name, project_name, region = process_test(row.dag_id, row.run_id, row.execution_date, row.test_id, row.test_start_date, row.test_end_date)
+        print(f'{row.dag_id}.{row.test_id} cluster:{cluster_name},project:{project_name}')
 
-        if cluster_name and project_name:
+        #if cluster_name and project_name:
+        if cluster_name:
           output_data.append({
             "dag_id": row.dag_id,
-            "task_id": row.test_id,
             "test_id": row.test_id,
             "run_id": row.run_id,
             "cluster_name": cluster_name,
@@ -180,4 +294,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    save()
+    #test()

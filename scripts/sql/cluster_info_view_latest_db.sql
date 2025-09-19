@@ -48,15 +48,14 @@ WITH
       op_arg_item LIKE "%GCPConfig(project_name=%"
   ),
 
-  aggr AS (  
+  aggr AS (
     SELECT
       cn.dag_id,
-      cn.task_id,
       cn.run_id,
-      cn.cluster_name,
       REGEXP_EXTRACT(cn.task_id, r"([^.]+)") AS test_id,
-      zn.region,      
-      pn.project_name
+      ANY_VALUE(CASE WHEN cn.cluster_name IS NOT NULL THEN cn.cluster_name ELSE NULL END) AS cluster_name,
+      ANY_VALUE(CASE WHEN zn.region IS NOT NULL THEN zn.region ELSE NULL END) AS region,
+      ANY_VALUE(CASE WHEN pn.project_name IS NOT NULL THEN pn.project_name ELSE NULL END) AS project_name
     FROM
       cluster_name_cte AS cn
     LEFT JOIN
@@ -65,11 +64,14 @@ WITH
     LEFT JOIN
       project_name_cte AS pn
       ON cn.dag_id = pn.dag_id AND cn.task_id = pn.task_id AND cn.run_id = pn.run_id
+    GROUP BY
+      cn.dag_id,
+      cn.run_id,
+      test_id
   )
 
 SELECT 
   a.dag_id,
-  a.task_id,
   a.run_id,
   a.cluster_name,
   a.test_id,
