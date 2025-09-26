@@ -43,6 +43,9 @@ class Status(enum.Enum):
   NOT_EXIST = "NOT EXIST"
   ERROR = "ERROR"
   RUNNING = "RUNNING"
+  RECONCILING = "RECONCILING"
+  PROVISIONING = "PROVISIONING"
+  STOPPING = "STOPPING"
 
 
 NOT_FOUND_MSG = "Cluster not found in GKE API."
@@ -159,21 +162,23 @@ def get_cluster_status(
   node_pools_info = []
   if cluster_mode == "Standard":
     for np in cluster.node_pools:
-      node_pools_info.append({
-          "name": np.name,
-          "status": container_v1.NodePool.Status(np.status).name
-          if np.status
-          else "UNKNOWN",
-          "status_message": np.status_message or None,
-          "version": np.version,
-          "autoscaling_enabled": np.autoscaling.enabled
-          if np.autoscaling
-          else False,
-          "initial_node_count": np.initial_node_count,
-          "machine_type": np.config.machine_type if np.config else None,
-          "disk_size_gb": np.config.disk_size_gb if np.config else None,
-          "preemptible": np.config.preemptible if np.config else False,
-      })
+      node_pools_info.append(
+          {
+              "name": np.name,
+              "status": container_v1.NodePool.Status(np.status).name
+              if np.status
+              else "UNKNOWN",
+              "status_message": np.status_message or None,
+              "version": np.version,
+              "autoscaling_enabled": np.autoscaling.enabled
+              if np.autoscaling
+              else False,
+              "initial_node_count": np.initial_node_count,
+              "machine_type": np.config.machine_type if np.config else None,
+              "disk_size_gb": np.config.disk_size_gb if np.config else None,
+              "preemptible": np.config.preemptible if np.config else False,
+          }
+      )
 
   return {
       "project_id": project_id,
@@ -219,6 +224,10 @@ def fetch_clusters_location(credentials, clusters) -> Dict[str, Any]:
   return cluster_locations
 
 
+def is_not_reconciling(cluster_status: str) -> bool:
+  return cluster_status != "RECONCILING"
+
+
 def insert_cluster_status_lists(
     credentials, status_list, project_name, location, cluster_name, now_utc
 ):
@@ -234,8 +243,13 @@ def insert_cluster_status_lists(
         node_pool
         for node_pool in info["node_pools"]
         if node_pool["status"] != Status.RUNNING.value
+        and node_pool["status"] != Status.PROVISIONING.value
+        and node_pool["status"] != Status.STOPPING.value
     ]
-    is_cluster_malfunction = cluster_status != Status.RUNNING.value
+    is_cluster_malfunction = (
+        cluster_status != Status.RUNNING.value
+        and cluster_status != Status.RECONCILING.value
+    )
     malfunction_node_pools_exist = len(mal_node_pools) > 0
 
     if is_cluster_malfunction and malfunction_node_pools_exist:
