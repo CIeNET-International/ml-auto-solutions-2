@@ -3,7 +3,8 @@ WITH
   latest_dag_run_cte AS (
     SELECT
       dag_id,
-      runs.run_id
+      runs.run_id,
+      runs.start_date
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs) AS runs
   WHERE runs.run_order_desc=1
@@ -21,7 +22,7 @@ WITH
     WHERE
       op.op_arg_item LIKE "%cluster_name=%"
   ),
-  region_cte AS (
+  region_cte_1 AS (
     SELECT
       op.dag_id,
       op.run_id,
@@ -34,7 +35,24 @@ WITH
     WHERE
       op_arg_item LIKE "%zone=%"
   ),
-  project_name_cte AS (
+  region_cte_2 AS (
+    SELECT
+      op.dag_id,
+      op.run_id,
+      op.task_id,
+      REGEXP_EXTRACT(op.op_arg_item, r"region='([a-zA-Z]+-[a-zA-Z0-9]+)") AS region
+    FROM
+      `amy_xlml_poc_prod.op_args_unnested_view` AS op
+    INNER JOIN latest_dag_run_cte AS ldr
+      ON op.dag_id = ldr.dag_id AND op.run_id = ldr.run_id
+    WHERE
+      op_arg_item LIKE "%region=%"
+  ),
+  region_cte AS (
+    SELECT dag_id,run_id,task_id,region FROM region_cte_1 UNION ALL
+    SELECT dag_id,run_id,task_id,region FROM region_cte_2
+  ),
+  project_name_cte_1 AS (
     SELECT
       op.dag_id,
       op.run_id,
@@ -47,7 +65,23 @@ WITH
     WHERE
       op_arg_item LIKE "%GCPConfig(project_name=%"
   ),
-
+  project_name_cte_2 AS (
+    SELECT
+      op.dag_id,
+      op.run_id,
+      op.task_id,
+      REGEXP_EXTRACT(op_arg_item, r"project_id='([^']*)'") AS project_name
+    FROM
+      `amy_xlml_poc_prod.op_args_unnested_view` AS op
+    INNER JOIN latest_dag_run_cte AS ldr
+      ON op.dag_id = ldr.dag_id AND op.run_id = ldr.run_id
+    WHERE
+      op_arg_item LIKE "%project_id=%"
+  ),
+  project_name_cte AS (
+    SELECT dag_id,run_id,task_id,project_name FROM project_name_cte_1 UNION ALL
+    SELECT dag_id,run_id,task_id,project_name FROM project_name_cte_2
+  ),  
   aggr AS (
     SELECT
       cn.dag_id,
@@ -73,6 +107,7 @@ WITH
 SELECT 
   a.dag_id,
   a.run_id,
+  c.start_date AS run_start_date,
   a.cluster_name,
   a.test_id,
   a.region,
@@ -82,6 +117,9 @@ SELECT
 FROM aggr a
 LEFT JOIN `amy_xlml_poc_prod.dag_test_info` i 
   ON a.dag_id = i.dag_id  AND a.test_id = i.test_id
+LEFT JOIN latest_dag_run_cte c ON a.dag_id = c.dag_id AND a.run_id=c.run_id
+
+  
 
 
 

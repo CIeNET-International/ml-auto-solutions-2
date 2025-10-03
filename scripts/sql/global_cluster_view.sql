@@ -17,6 +17,7 @@ abnormal_counts AS (
     SELECT
       project_id,
       cluster_name,
+      region,
       COUNT(1) AS abnormal_nodepool_count
     FROM
       `amy_xlml_poc_prod.gke_cluster_info`,
@@ -25,35 +26,39 @@ abnormal_counts AS (
       np.status != 'RUNNING'
     GROUP BY
       project_id,
-      cluster_name ) AS t2
+      cluster_name,
+      region ) AS t2
   ON
     t1.project_id = t2.project_id
     AND t1.cluster_name = t2.cluster_name
+    AND t1.region = t2.region
 ),
 
 abnormal_clusters AS (
   SELECT
     ARRAY_AGG(STRUCT(project_name,
         cluster_name,
+        region,
         cluster_dags,
         cluster_tests)) AS cluster_counts
   FROM (
     SELECT
       v.project_name,
       v.cluster_name,
+      v.region,
       COUNT(DISTINCT dag_id) AS cluster_dags,
       COUNT(DISTINCT CONCAT(dag_id, test_id)) AS cluster_tests,
     FROM
       `amy_xlml_poc_prod.cluster_info_view_latest` v
      JOIN  (
-      SELECT project_id,cluster_name 
+      SELECT project_id,cluster_name,region
       FROM `amy_xlml_poc_prod.gke_cluster_info`
       WHERE status != 'RUNNING' ) AS t1
-    ON t1.project_id = v.project_name AND t1.cluster_name = v.cluster_name
+    ON t1.project_id = v.project_name AND t1.cluster_name = v.cluster_name AND t1.region = v.region
     WHERE
       v.project_name IS NOT NULL AND v.cluster_name IS NOT NULL
     GROUP BY
-      v.project_name, v.cluster_name 
+      v.project_name, v.cluster_name , v.region
     HAVING
       cluster_dags>0
     )

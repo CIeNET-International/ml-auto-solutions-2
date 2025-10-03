@@ -5,15 +5,18 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from google.cloud import bigquery, storage, logging_v2
 from urllib.parse import quote
-from config_log import (
-    BQ_PROJECT_ID, BQ_DATASET, BQ_VIEW_NAME, BQ_DEST_TABLE,
+from config import (
+    BQ_PROJECT_ID, BQ_DATASET, 
     GCS_PROJECT_ID, GCS_BUCKET_NAME,
-    LOGS_PROJECT_ID, LOG_EXPLORER_HOST,
+    LOG_PROJECT_ID, LOG_EXPLORER_HOST,
     LOG_QUERY_END_PADDING_SECONDS, LOG_QUERY_SEVERITY,
     HACKED_DAG_TIMES, DAGS_TO_QUERY_LOGS
 )
 import save_log_utils as utils
 import log_explorer_err_sentence as err_sentence
+
+BQ_VIEW_NAME = "latest_dag_runs"
+BQ_DEST_TABLE = "dag_runs_with_logs"
 
 
 def get_airflow_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, severity):
@@ -27,7 +30,7 @@ def get_airflow_logs(dag_id, run_id, test_id, test_start_date, end_with_padding,
         dag_id, run_id, test_id, 
         test_start_date, end_with_padding
     )
-    entries = utils.query_logs(filter_str_error, LOGS_PROJECT_ID, 500)
+    entries = utils.query_logs(filter_str_error, LOG_PROJECT_ID, 500)
     logs_entries = []
     logs_entries_keywords = []
     messages_keywords = set()
@@ -69,7 +72,7 @@ def get_airflow_logs(dag_id, run_id, test_id, test_start_date, end_with_padding,
     return logs_entries, logs_entries_keywords, list(error_messages), list(messages_keywords)
 
 
-def get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, cluster_name, cluster_project):
+def get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, cluster_name, cluster_project, cluster_region):
     workload_id = None
     filter_str_workload_id = utils.build_log_filter_workload_id(
         dag_id, run_id, test_id, 
@@ -77,7 +80,7 @@ def get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with
     )
     print(f"query log explorer workload_id")
     pattern = re.compile(r'Returned value was: (\S+)')
-    entries_workload = utils.query_logs(filter_str_workload_id, LOGS_PROJECT_ID, 1)
+    entries_workload = utils.query_logs(filter_str_workload_id, LOG_PROJECT_ID, 1)
     for e in entries_workload:
         payload_str = e.payload if hasattr(e, "payload") else str(e)
         match = pattern.search(payload_str)
@@ -87,7 +90,7 @@ def get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with
 
     return workload_id
 
-def get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_project, workload_id):
+def get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_project, cluster_region, workload_id):
     """Query and format K8s logs."""
     print(f'qeury k8s logs for workload_id:{workload_id},cluster_name:{cluster_name},project:{cluster_project}')
     #print(f"query log explorer {filter_str_k8s}")
@@ -148,9 +151,12 @@ def get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_
 def process_test(row, dag_id, run_id, execution_date, test):
     """Process a single test, fetch logs, and build the output dictionary."""
     test_id, test_start_date, test_end_date = utils.get_test_run_dates(dag_id, test)
+    #if (test_id != "torchbench_all-v5litepod-4"):
+    #    return None
     test_status = test["test_status"]
     cluster_project = test["cluster_project"]
     cluster_name = test["cluster_name"]
+    cluster_region = test["region"]
     accelerator_type = test["accelerator_type"]
     accelerator_family = test["accelerator_family"]
     machine_families = test["machine_families"]
@@ -174,13 +180,13 @@ def process_test(row, dag_id, run_id, execution_date, test):
         logs_entries, logs_keywords_entries, airflow_errors, airflow_keywords = get_airflow_logs(
                 dag_id, run_id, test_id, test_start_date, end_with_padding, LOG_QUERY_SEVERITY)
         
-        if cluster_name and cluster_project:
-            workload_id = get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, cluster_name, cluster_project)
+        if cluster_name and cluster_project and cluster_region:
+            workload_id = get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with_padding, cluster_name, cluster_project, cluster_region)
             if (workload_id):
                 filter_str_k8s = utils.build_log_filter_k8s(
                     dag_id, run_id, test_id, 
-                    test_start_date, end_with_padding, cluster_name, workload_id)
-                #k8s_messages = get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_project, workload_id)
+                    test_start_date, end_with_padding, cluster_name, cluster_region, workload_id)
+                #k8s_messages = get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_project, cluster_region, workload_id)
                 #if (k8s_messages):
                 log_url_k8s = utils.build_log_explorer_url(filter_str_k8s, cluster_project)
         print(f'dag:{dag_id},test_id:{test_id},errors:{airflow_errors}')            
@@ -197,8 +203,8 @@ def process_test(row, dag_id, run_id, execution_date, test):
         dag_id, run_id, test_id, 
         test_start_date, end_with_padding
     )
-    log_url_error = utils.build_log_explorer_url(filter_str_error, LOGS_PROJECT_ID) if test_status != 'success' else ""
-    log_url_all = utils.build_log_explorer_url(filter_str_all, LOGS_PROJECT_ID)
+    log_url_error = utils.build_log_explorer_url(filter_str_error, LOG_PROJECT_ID) if test_status != 'success' else ""
+    log_url_all = utils.build_log_explorer_url(filter_str_all, LOG_PROJECT_ID)
     log_url_graph = f"https://efdb2a1d6c2c435b8b7de77690c286a9-dot-us-central1.composer.googleusercontent.com/dags/{quote(dag_id)}/grid?num_runs=25&search={quote(dag_id)}&tab=graph&dag_run_id={quote(run_id)}&task_id={quote(test_id)}"
     tasks_with_url = []
     for task in test["tasks"]:
@@ -211,7 +217,8 @@ def process_test(row, dag_id, run_id, execution_date, test):
             "task_start_date": task["task_start_date"],
             "task_end_date": task["task_end_date"],
             "try_number": task["try_number"],
-            "state": task["state"],
+            "task_status": task["task_status"],
+            "disp_order": task["disp_order"],
             "task_url_airflow": task_url_airflow,
         })
 
@@ -226,6 +233,7 @@ def process_test(row, dag_id, run_id, execution_date, test):
         "test_status": test["test_status"],
         "cluster_project": cluster_project,
         "cluster_name": cluster_name,
+        "cluster_region": cluster_region,
         "accelerator_type": accelerator_type,
         "accelerator_family": accelerator_family,
         "machine_families": machine_families,
@@ -248,7 +256,8 @@ def save():
     bq_client = bigquery.Client(project=BQ_PROJECT_ID)
 
     #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME}` where dag_id='jax_ai_image_gpu_e2e'"
-    query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME}`"
+    #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME}` where dag_id='pytorchxla2-torchbench'"
+    query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME}` where dag_id='a3mega_recipes_llama3-70b_nemo'"
     rows = list(bq_client.query(query).result())
 
     output_data = []
@@ -267,6 +276,7 @@ def save():
             bigquery.SchemaField("workload_id", "STRING"),
             bigquery.SchemaField("cluster_project", "STRING"),
             bigquery.SchemaField("cluster_name", "STRING"),
+            bigquery.SchemaField("cluster_region", "STRING"),
             bigquery.SchemaField("accelerator_type", "STRING"),
             bigquery.SchemaField("accelerator_family", "STRING"),
             bigquery.SchemaField("machine_families", "STRING", mode="REPEATED"),
@@ -275,7 +285,8 @@ def save():
                 bigquery.SchemaField("task_start_date", "TIMESTAMP", mode="NULLABLE"),
                 bigquery.SchemaField("task_end_date", "TIMESTAMP", mode="NULLABLE"),
                 bigquery.SchemaField("try_number", "INTEGER", mode="NULLABLE"),
-                bigquery.SchemaField("state", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("task_status", "STRING", mode="NULLABLE"),
+                bigquery.SchemaField("disp_order", "INTEGER", mode="NULLABLE"),
                 bigquery.SchemaField("task_url_airflow", "STRING"),
             ]),
             bigquery.SchemaField("logs", "RECORD", mode="REPEATED", fields=[

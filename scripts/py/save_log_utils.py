@@ -2,16 +2,21 @@ import re
 import json
 from google.protobuf.json_format import MessageToDict, MessageToJson
 import urllib.parse
+import time
 from datetime import datetime, timedelta, timezone
 from google.cloud import bigquery, storage, logging_v2
-from config_log import (
+from config import (
     BQ_PROJECT_ID, BQ_DATASET,
     GCS_PROJECT_ID, GCS_BUCKET_NAME,
-    LOGS_PROJECT_ID, LOG_EXPLORER_HOST,
+    LOG_PROJECT_ID, LOG_EXPLORER_HOST,
     LOG_QUERY_END_PADDING_SECONDS, LOG_QUERY_SEVERITY,
     HACKED_DAG_TIMES, DAGS_TO_QUERY_LOGS
 )
 
+# Quota Limit: 200 ReadRequestsPerMinutePerProject.
+# Minimum delay between requests: 60 seconds / 200 requests = 0.3 seconds.
+# Using 0.35 seconds for a safe buffer.
+LOGGING_API_DELAY_SECONDS = 0.35
 
 def parse_zulu(dt_str):
     """Parse Zulu-format datetime like 2025-08-10T00:00:00Z"""
@@ -62,7 +67,7 @@ def build_log_filter_errors_plus_keywords(dag_id, run_id, task_id_prefix, start_
         f'(textPayload =~ "(?i)error|failed|exception|denied|exceeded|not found|backoff|unschedulable"',
         f'  OR jsonPayload.message =~ "(?i)error|failed|exception|denied|exceeded|not found|backoff|unschedulable"',
         f') AND (severity = INFO OR severity = NOTICE OR severity = WARNING)'
-        f')'
+        f') OR (textPayload =~ "(?i)fatal" OR jsonPayload.message =~ "(?i)fatal")'
     ]    
     return "\n".join(filter_parts)
 
@@ -84,11 +89,12 @@ def build_log_filter_workload_id(dag_id, run_id, task_id_prefix, start_time, end
     return "\n".join(filter_parts)
 
 
-def build_log_filter_k8s(dag_id, run_id, task_id_prefix, start_time, end_time, cluster_name, workload_id):
+def build_log_filter_k8s(dag_id, run_id, task_id_prefix, start_time, end_time, cluster_name, cluster_region, workload_id):
     extracted_duration = extract_date_string_from_run_id(run_id)
     """Build log explorer filter string."""
     filter_parts = [
         f'resource.labels.cluster_name="{cluster_name}"',
+        f'resource.labels.location="{cluster_region}"',
         f'(resource.type="k8s_pod" OR resource.type="k8s_node" OR resource.type="k8s_container")',
         f'labels."logging.gke.io/top_level_controller_name"=~"{workload_id}"',
         f'severity>DEFAULT',
@@ -124,7 +130,11 @@ def build_log_explorer_url(filter_str, project_id):
 
 
 def query_logs(filter_str, log_project_id, page_size):
-    """Query logs from Cloud Logging."""
+    """Query logs from Cloud Logging with rate limiting."""
+    print(f'QUERY:{filter_str}')
+    # Introduce a delay before the API call to respect the quota limit
+    time.sleep(LOGGING_API_DELAY_SECONDS) # <--- RATE LIMITING DELAY
+
     client = logging_v2.Client(project=log_project_id)
     entries = list(client.list_entries(
         filter_=filter_str,

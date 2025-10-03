@@ -9,13 +9,14 @@ import save_log_utils as utils
 
 
 PAGE_SIZE = 500
-KEYWORDS = ["error", "failed", "denied", "exception", "exceeded", "not found", "backoff", "unschedulable"]
+KEYWORDS = ["error", "failed", "denied", "exception", "exceeded", "not found", "backoff", "unschedulable", "fatal"]
 #IGNORE_PATTERNS = [
     #re.compile(rf"marking task as (?:{'|'.join(re.escape(k) for k in KEYWORDS)})\. dag_id=", re.IGNORECASE),
 #]
 IGNORE_PATTERNS = [
     re.compile(r"marking task as failed\. dag_id=", re.IGNORECASE),
     re.compile(r"marking task as error\. dag_id=", re.IGNORECASE),
+    re.compile(r"hiding output unless there is an error", re.IGNORECASE),
 ]
 LOOKBACK_LINES_FOR_ECHO = 6   # inspect up to this many previous lines for an 'echo' start
 CONTINUATION_MAX_LINES = 10   # when line ends with ":", append up to this many following non-empty lines
@@ -278,17 +279,17 @@ def process_log_entry(entry: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Set[
 FILTER = f'''
 resource.type="cloud_composer_environment"
 resource.labels.environment_name="ml-automation-solutions"
-labels.workflow="new_internal_stable_release_a3ultra_llama3.1-405b_256gpus_fp8_maxtext"
-labels.execution-date="2025-08-23T08:30:00+00:00"
-labels.task-id=~"^run_internal_dag_united_workload.*"
-timestamp >= "2025-08-26T08:30:26.987000+00:00"
-timestamp <= "2025-08-26T08:34:34.581000+00:00"
+labels.workflow="pytorchxla2-torchbench"
+labels.execution-date="2025-09-28T11:00:00+00:00"
+labels.task-id=~"^torchbench_all-v5litepod-4.*"
+timestamp >= "2025-09-29T11:00:57.312000+00:00"
+timestamp <= "2025-09-29T11:54:32.830000+00:00"
 (
-  textPayload =~ "(?i)error|failed|exception|denied|exceeded|not found|backoff|unschedulable"
-  OR jsonPayload.message =~ "(?i)error|failed|exception|denied|exceeded|not found|backoff|unschedulable"
+  textPayload =~ "(?i)error|failed|exception|denied|exceeded|not found|backoff|unschedulable|fatal"
+  OR jsonPayload.message =~ "(?i)error|failed|exception|denied|exceeded|not found|backoff|unschedulable|fatal"
 )
-severity = INFO OR severity = NOTICE OR severity = WARNING
 '''
+#severity = INFO OR severity = NOTICE OR severity = WARNING
 
 # -------------------- Run & pretty-print -----------------------
 if __name__ == "__main__":

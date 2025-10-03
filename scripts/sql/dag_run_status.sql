@@ -1,8 +1,11 @@
 CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_prod.dag_run_status` AS
 WITH
 full_dag_runs AS (
-  SELECT base.category, base.accelerator, base.dag_owners dag_owner, base.tags, base.formatted_schedule, base.is_paused, base.dag_id, base.total_runs, base.total_tests,
-    runs.run_id, runs.execution_date, DATE(runs.start_date) AS run_date, runs.start_date, runs.end_date, runs.is_passed, runs.run_order_desc, runs.is_passed_run_order_desc 
+  SELECT base.category, base.accelerator, base.dag_owners dag_owner, base.tags, base.formatted_schedule, base.is_paused, base.dag_id, base.total_runs, 
+    base.total_tests AS base_total_tests,
+    runs.run_id, runs.execution_date, DATE(runs.start_date) AS run_date, runs.start_date, runs.end_date, runs.is_passed, runs.is_partial_passed,
+    runs.run_order_desc, runs.is_passed_run_order_desc,
+    runs.total_tests, runs.successful_tests
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs) AS runs
  
@@ -19,9 +22,14 @@ daily_dag_status AS (
     fdr.run_date AS date,
     CASE
       WHEN COUNT(fdr.run_id) = 0 THEN 'no run'
-      WHEN COUNTIF(fdr.is_passed = 0) > 0 THEN 'failed'
+      --WHEN COUNTIF(fdr.is_passed = 0) > 0 THEN 'failed'
+      WHEN COUNTIF(fdr.is_passed = 0 AND fdr.is_partial_passed = 0) > 0 THEN 'failed'
+      WHEN COUNTIF(fdr.is_partial_passed = 1) > 0 THEN 'partial'
       ELSE 'success'
-    END AS status
+    END AS status,
+    SUM(fdr.total_tests) AS total_tests,
+    SUM(fdr.successful_tests) AS successful_tests,
+    SUM(fdr.total_tests) - SUM(fdr.successful_tests) AS failed_tests
   FROM
     full_dag_runs AS fdr
   GROUP BY
@@ -62,14 +70,14 @@ SELECT
   ddd.category,
   ddd.accelerator,
   ds.date,
-  COALESCE(dds.status, 'no run') AS status
+  COALESCE(dds.status, 'no run') AS status,
+  dds.total_tests,
+  dds.successful_tests,
+  dds.failed_tests
 FROM
   distinct_dag_details AS ddd
 CROSS JOIN
   date_series AS ds
 LEFT JOIN
-  daily_dag_status AS dds
-ON
-  ddd.dag_id = dds.dag_id
-  AND ds.date = dds.date
+  daily_dag_status AS dds ON ddd.dag_id = dds.dag_id AND ds.date = dds.date
   

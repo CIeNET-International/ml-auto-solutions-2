@@ -1,19 +1,96 @@
-# config.py
-project_id = "cienet-cmcs"
-dataset_id = "amy_xlml_poc_2"
-bucket_name = "amy-xlml-poc"
 
-# Destination for temporary GCS JSONL file
-blob_path = "tmp/gke_cluster_info.jsonl"
 
-# BigQuery settings
-view_name = "cluster_view"
-table_id = "gke_cluster_info_2"
-table_id_metrics = "cluster_metrics"
-table_id_metrics_real = "cluster_metrics_real"
-table_id_metrics_nw = "cluster_metrics_nw"
 
-# Script behavior settings
-max_rows = 0 # Set <= 0 to fetch all rows; otherwise, limits the number of rows
-external_dependencies = ["https://www.google.com", "https://api.example.com"]
+
+# Common Config
+
+# BigQuery config
+BQ_PROJECT_ID = "cienet-cmcs"
+BQ_DATASET = "amy_xlml_poc_prod"
+
+#GCS
+GCS_PROJECT_ID = "cienet-cmcs"
+GCS_BUCKET_NAME = "amy-xlml-poc-prod"
+
+
+#PERSIST
+PERSIST_PAIR = {
+    'base': {
+        'view_name': 'base_view',
+        'table_name': 'base'
+    },
+    'statistic': {
+        'view_name': 'statistic_last_window_view',
+        'table_name': 'statistic_last_window'
+    },
+    'dag': {
+        'view_name': 'all_dag_view',
+        'table_name': 'all_dag'
+    },
+    'profile': {
+        'view_name': 'dag_execution_profile_with_cluster_view',
+        'table_name': 'dag_execution_profile_with_cluster'
+    },
+    'sch': {
+        'view_name': 'dag_forward_schedule_simulation',
+        'table_name': 'dashboard_dag_forward_schedule_simulation'
+    },
+    'global': {
+        'view_name': 'global_dag_summary_view',
+        'table_name': 'global_dag_summary'
+    },
+}
+
+#LOGS
+LOG_PROJECT_ID = "cloud-ml-auto-solutions"
+LOG_RESOURCE_TYPE = "cloud_composer_workflow"
+LOG_COMPOSER_ENVIRONMENT_NAME = "ml-automation-solutions"
+
+# Log Explorer UI host
+#LOG_EXPLORER_HOST = "https://console.cloud.google.com/logs/query"
+LOG_EXPLORER_HOST = "https://pantheon.corp.google.com/logs/query"
+
+# Optional: default time padding for URLs (seconds)
+LOG_TIME_PADDING = 0
+
+# Extend query end time range by this many seconds
+LOG_QUERY_END_PADDING_SECONDS = 5  
+
+LOG_QUERY_SEVERITY = "ERROR"
+
+DAGS_TO_QUERY_LOGS = [
+    #"jax_ai_image_candidate_tpu_e2e",
+    #"maxtext_muti_tier_p2_checkpointing",
+    #"new_internal_stable_release_a3ultra_llama3.1-405b_256gpus_fp8_maxtext",
+    #"maxstar_v5e_llama2_70b_daily",
+    #"maxtext_gpu_end_to_end",
+]
+
+# ----------------------------
+# HACKED TIME CONFIG (by dag_id) --for test env only
+# ----------------------------
+HACKED_DAG_TIMES = {
+#    "maxtext_muti_tier_p2_checkpointing": {
+#        "run": {
+#            "execution": "2025-08-13T10:00:00Z",
+#            "start": "2025-08-14T10:00:02Z",
+#            "end": "2025-08-14T11:48:01Z",
+#            "run_id": "scheduled__2025-08-13T10:00:00+00:00"
+#        },
+#        "tests": {
+#            "maxtext-multi-tier-checkpointing-p2-save-3xv6e-16": {
+#                "start": "2025-08-14T10:02:16Z",
+#                "end": "2025-08-14T10:40:32Z"
+#            },
+#            "maxtext-multi-tier-checkpointing-p2-emulate-disruption-v6e-16": {
+#                "start": "2025-08-14T10:41:19Z",
+#                "end": "2025-08-14T11:16:11Z"
+#            },
+#            "maxtext-multi-tier-checkpointing-p2-restore-3xv6e-16": {
+#                "start": "2025-08-14T11:16:54Z",
+#                "end": "2025-08-14T11:47:58Z"
+#            },
+#        }
+#    }
+}
 

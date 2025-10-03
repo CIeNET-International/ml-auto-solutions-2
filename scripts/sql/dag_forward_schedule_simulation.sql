@@ -38,6 +38,8 @@ dag_sch AS (
 profiles AS (
   SELECT
     p.cluster_name,
+    p.cluster_project,
+    p.region,
     p.dag_id,
     p.test_id,
     p.start_offset_seconds,
@@ -215,7 +217,7 @@ expanded AS (
 -- Apply offsets
 timed AS (
   SELECT
-    cluster_name,
+    cluster_name, cluster_project, region,
     dag_id,
     test_id,
     dag_run_start AS dag_sim_start,
@@ -239,7 +241,7 @@ timed AS (
 
 -- Final output
 SELECT
-  t.cluster_name,
+  t.cluster_name, t.cluster_project AS project_name, t.region,
   t.dag_id,
   d.schedule_interval,
   d.formatted_schedule,  
@@ -252,6 +254,8 @@ SELECT
     SELECT COUNT(1)
     FROM timed s
     WHERE s.cluster_name = t.cluster_name
+      AND s.cluster_project = t.cluster_project
+      AND s.region = t.region
       AND s.test_sim_start_time < t.test_sim_end_time
       AND s.test_sim_end_time   > t.test_sim_start_time
   ) AS concurrent_tests

@@ -4,18 +4,30 @@ from datetime import datetime, timezone
 import uuid
 import os
 import re
+import collections
 
+from config import (
+    BQ_PROJECT_ID, BQ_DATASET,
+    GCS_PROJECT_ID, GCS_BUCKET_NAME,
+)
+
+project_id = BQ_PROJECT_ID
+dataset_id = BQ_DATASET
+gcs_bucket_name = GCS_BUCKET_NAME
 client = bigquery.Client()
 gcs_client = storage.Client()
 
 # === Configuration ===
-project_id = "cienet-cmcs"
-dataset_id = "amy_xlml_poc_prod"
 serialized_dag_table = "serialized_dag"
-dag_table = "dag"
+#dag_table = "dag"
+dag_table = "base"
 output_table_1 = "dag_test_info"
 output_table_2 = "dag_test_op_kwargs"
-gcs_bucket_name = "amy-xlml-poc-prod" 
+output_table_3 = "dag_task_order"
+
+
+client = bigquery.Client()
+gcs_client = storage.Client()
 
 required_op_kwargs = [
     "test_id",
@@ -106,6 +118,7 @@ def create_output_tables():
         bigquery.SchemaField("load_time", "TIMESTAMP"),
     ]
     create_table_if_not_exists(table1_ref, schema1)
+
     table2_ref = f"{project_id}.{dataset_id}.{output_table_2}"
     schema2 = [
         bigquery.SchemaField("dag_id", "STRING"),
@@ -115,6 +128,18 @@ def create_output_tables():
         bigquery.SchemaField("load_time", "TIMESTAMP"),
     ]
     create_table_if_not_exists(table2_ref, schema2)
+
+    table3_ref = f"{project_id}.{dataset_id}.{output_table_3}"
+    schema3 = [
+        bigquery.SchemaField("dag_id", "STRING"),
+        bigquery.SchemaField("task_order", "STRUCT", mode="REPEATED", fields=[
+            bigquery.SchemaField("task_id", "STRING", mode="REQUIRED"),
+            bigquery.SchemaField("disp_order", "INTEGER", mode="REQUIRED"),
+            bigquery.SchemaField("parents", "STRING", mode="REPEATED"),
+        ]),
+
+    ]
+    create_table_if_not_exists(table3_ref, schema3)
 
 def upload_to_gcs(bucket_name, file_path, gcs_path):
     bucket = gcs_client.bucket(bucket_name)
@@ -149,37 +174,153 @@ def categorize_op_kwargs(value: str) -> str:
     else:
         return "CPU"    
     
-def main():
+
+def build_display_order_and_parents(serialized_dag_data):
+    """
+    Builds a list of tasks with their display order and parent hierarchy
+    by using a topological sort on task dependencies.
+    """
+    task_list = []
+    task_payload_map = {}
+
+    # Create a lookup map for task details
+    for task_info in serialized_dag_data.get('dag', {}).get('tasks', []):
+        task_payload = task_info.get('__var', {})
+        task_id = task_payload.get('task_id')
+        if task_id:
+            task_payload_map[task_id] = task_payload
+
+    # Create the dependency graph and in-degree map for topological sort
+    adj_list = collections.defaultdict(list)
+    in_degree = collections.defaultdict(int)
+
+    def _build_graph(node, parent_id=''):
+        node_type, payload = node
+
+        if node_type == 'taskgroup':
+            group_id = payload.get('_group_id')
+            full_id = f'{parent_id}.{group_id}' if parent_id else group_id
+
+            for child_key, child_data in payload.get('children', {}).items():
+                _build_graph(child_data, parent_id=full_id)
+
+            # Group-level dependencies
+            for down_task in payload.get('downstream_task_ids', []):
+                adj_list[full_id].append(down_task)
+                in_degree[down_task] += 1
+            for up_task in payload.get('upstream_task_ids', []):
+                adj_list[up_task].append(full_id)
+                in_degree[full_id] += 1
+
+        elif node_type == 'operator':
+            task_id = payload
+            task_payload = task_payload_map.get(task_id)
+            if not task_payload:
+                return
+
+            for down_task in task_payload.get('downstream_task_ids', []):
+                adj_list[task_id].append(down_task)
+                in_degree[down_task] += 1
+            for up_task in task_payload.get('upstream_task_ids', []):
+                adj_list[up_task].append(task_id)
+                in_degree[task_id] += 1
+
+    root_children = serialized_dag_data.get('dag', {}).get('_task_group', {}).get('children', {})
+    for _, data in root_children.items():
+        _build_graph(data)
+
+    # Perform topological sort
+    queue = collections.deque([node for node in adj_list if in_degree[node] == 0])
+    ordered_ids = []
+    while queue:
+        node = queue.popleft()
+        ordered_ids.append(node)
+        for neighbor in sorted(adj_list[node]):
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    # Build the final list with display order and parents
+    display_order = 1
+    task_paths = {}
+
+    # Get all task IDs and group IDs from the serialized data
+    all_ids = set(task_payload_map.keys())
+
+    def _collect_ids(children_dict, parent_path):
+        for child_key, child_data in children_dict.items():
+            child_type, child_payload = child_data
+            if child_type == "taskgroup":
+                group_id = child_payload.get("_group_id")
+                new_parent_path = parent_path + [group_id]
+                all_ids.add(group_id)
+                _collect_ids(child_payload.get("children", {}), new_parent_path)
+            elif child_type == "operator":
+                task_id = child_payload
+                task_paths[task_id] = parent_path
+
+    root_children = serialized_dag_data.get('dag', {}).get('_task_group', {}).get('children', {})
+    _collect_ids(root_children, [])
+
+    # Now, assign display order based on topological sort
+    for task_id in ordered_ids:
+        if task_id in all_ids:
+            parent_path = task_paths.get(task_id, [])
+            task_list.append({
+                "task_id": task_id,
+                "disp_order": display_order,
+                "parents": parent_path
+            })
+            display_order += 1
+            all_ids.remove(task_id)
+
+    # Add any remaining nodes that were not part of the main flow
+    for task_id in sorted(list(all_ids)):
+        parent_path = task_paths.get(task_id, [])
+        task_list.append({
+            "task_id": task_id,
+            "disp_order": display_order,
+            "parents": parent_path
+        })
+        display_order += 1
+
+    return task_list
+
+
+def save():
     start_date = datetime.now()
-    dag_query = f"SELECT dag_id FROM `{project_id}.{dataset_id}.{dag_table}`"
-    dag_ids = [row["dag_id"] for row in client.query(dag_query)]
-    print(f"Found {len(dag_ids)} DAGs to process.")
+    dag_query = f"SELECT dag_id,data FROM `{project_id}.{dataset_id}.{serialized_dag_table}`"
+
+    client = bigquery.Client(project=project_id)
+
+    rows = list(client.query(dag_query).result())
+
+    total_dags = len(rows)
+
+    print(f"Found {total_dags} DAGs to process.")
     create_output_tables()
     summary_rows = []
     kv_rows = []
+    task_order_rows = []
     load_time = datetime.now(timezone.utc).isoformat()
-    total_dags = len(dag_ids)
 
-    for index, dag_id in enumerate(dag_ids, start=1):
+    for index, row in enumerate(rows, start=1):
+        dag_id = row["dag_id"]
         print(f"Processing DAG {index}/{total_dags}: {dag_id}")
-        query = f"""
-            SELECT data
-            FROM `{project_id}.{dataset_id}.{serialized_dag_table}`
-            WHERE dag_id = @dag_id
-            LIMIT 1
-        """
-        job_config = bigquery.QueryJobConfig(
-            query_parameters=[bigquery.ScalarQueryParameter("dag_id", "STRING", dag_id)]
-        )
-        result = list(client.query(query, job_config=job_config))
-        if not result:
-            print(f"No serialized DAG found for {dag_id}")
-            continue
         try:
-            dag_data = json.loads(result[0]["data"])
+            dag_data = json.loads(row["data"])
         except Exception as e:
             print(f"Failed to parse DAG {dag_id}: {e}")
             continue
+
+        ordered_tasks_data = build_display_order_and_parents(dag_data)
+        order_row_data = {
+            "dag_id": dag_id,
+            "task_order": ordered_tasks_data
+        }
+        task_order_rows.append(order_row_data)
+
+
         tasks = dag_data.get("dag", {}).get("tasks", [])
         merged_tasks = merge_tasks(tasks)
         for test_id, info in merged_tasks.items():
@@ -226,6 +367,7 @@ def main():
     # Write to local files
     summary_file_path = f"summary_rows_{uuid.uuid4()}.jsonl"
     kv_file_path = f"kv_rows_{uuid.uuid4()}.jsonl"
+    task_order_file_path = f"taskorder_rows_{uuid.uuid4()}.jsonl"
     
     if summary_rows:
         with open(summary_file_path, 'w') as f:
@@ -238,6 +380,12 @@ def main():
             for row in kv_rows:
                 f.write(json.dumps(row) + '\n')
         print(f"Wrote {len(kv_rows)} rows to local file {kv_file_path}")
+        
+    if task_order_rows:
+        with open(task_order_file_path, 'w') as f:
+            for row in task_order_rows:
+                f.write(json.dumps(row) + '\n')
+        print(f"Wrote {len(task_order_rows)} rows to local file {task_order_file_path}")
         
     # Upload to GCS and load into BigQuery
     if summary_rows:
@@ -258,6 +406,15 @@ def main():
         print("No key-value data to load. Truncating table anyway.")
         truncate_table(output_table_2)
 
+    if task_order_rows:
+        gcs_path_3 = f"bq_load/{output_table_3}/{os.path.basename(task_order_file_path)}"
+        upload_to_gcs(gcs_bucket_name, task_order_file_path, gcs_path_3)
+        load_from_gcs_and_truncate(f"{project_id}.{dataset_id}.{output_table_3}", f"gs://{gcs_bucket_name}/{gcs_path_3}")
+        os.remove(task_order_file_path)
+    else:
+        print("No key-value data to load. Truncating table anyway.")
+        truncate_table(output_table_3)
+
     end_date = datetime.now()
     dur = end_date - start_date
     print(f'start:{start_date}, end_date:{end_date}, duration:{dur} seconds')
@@ -269,5 +426,5 @@ def truncate_table(table_name):
     print(f"Truncated table: {full_table_id}")
 
 if __name__ == "__main__":
-    main()
+    save()
 

@@ -16,6 +16,7 @@ GCS_BUCKET_NAME = "amy-xlml-poc-prod"
 BIGQUERY_SCHEMA = [
     bigquery.SchemaField("project_name", "STRING", mode="REQUIRED"),
     bigquery.SchemaField("cluster_name", "STRING", mode="REQUIRED"),
+    bigquery.SchemaField("region", "STRING", mode="REQUIRED"),
 ]
 
 # --- Step 2: Get rows from BQ view ---
@@ -45,10 +46,10 @@ def list_clusters_for_project(project_id):
 
 def main():
     start_date = datetime.now()
-    rows = get_clusters_from_view()
-    if not rows:
-        print("No rows found in view.")
-        return
+    #rows = get_clusters_from_view()
+    #if not rows:
+    #    print("No rows found in view.")
+    #    return
 
     all_clusters_data = []
     #projects = set(row.project_name for row in rows)
@@ -70,6 +71,7 @@ def main():
               all_clusters_data.append({
                 "project_name": project_id,
                 "cluster_name": c.name,
+                "region": c.location,
               })
         except Exception as e:
             print(f"Error listing clusters for {project}: {e}")

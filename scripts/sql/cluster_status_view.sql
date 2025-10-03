@@ -4,13 +4,15 @@ cluster_machine_families AS (
   SELECT
     project_id,
     cluster_name,
+    region,
     ARRAY_AGG(DISTINCT np.machine_family IGNORE NULLS) AS machine_families
   FROM
     `amy_xlml_poc_prod.gke_cluster_info`,
     UNNEST(node_pools) AS np
   GROUP BY
     project_id,
-    cluster_name
+    cluster_name,
+    region
 )
 SELECT
     civ.dag_id,
@@ -35,9 +37,10 @@ SELECT
 FROM
     `amy_xlml_poc_prod.cluster_info_view_latest` civ
 LEFT JOIN
-    `amy_xlml_poc_prod.gke_cluster_info` gci ON civ.project_name = IFNULL(gci.project_id, civ.project_name) AND civ.cluster_name = IFNULL(gci.cluster_name, civ.cluster_name)
+--    `amy_xlml_poc_prod.gke_cluster_info` gci ON civ.project_name = IFNULL(gci.project_id, civ.project_name) AND civ.cluster_name = IFNULL(gci.cluster_name, civ.cluster_name)
+    `amy_xlml_poc_prod.gke_cluster_info` gci ON civ.project_name = gci.project_id AND civ.cluster_name = gci.cluster_name AND civ.region = gci.region
 LEFT JOIN
     `amy_xlml_poc_prod.dag_test_info` dti ON civ.dag_id = dti.dag_id AND civ.test_id = dti.test_id
 LEFT JOIN
-    cluster_machine_families cmf ON gci.project_id = cmf.project_id AND gci.cluster_name = cmf.cluster_name
+    cluster_machine_families cmf ON gci.project_id = cmf.project_id AND gci.cluster_name = cmf.cluster_name AND gci.region=cmf.region
 

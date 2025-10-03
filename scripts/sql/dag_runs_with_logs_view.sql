@@ -17,6 +17,7 @@ SELECT
     workload_id, 
     cluster_project, 
     cluster_name, 
+    cluster_region,
     accelerator_type,
     accelerator_family,
     machine_families,
@@ -38,3 +39,4 @@ SELECT
     UNNEST(dr.tests) AS t ) AS tests
 FROM
   `cienet-cmcs.amy_xlml_poc_prod.dag_runs_with_logs` AS dr;
+

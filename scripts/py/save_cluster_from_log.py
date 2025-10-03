@@ -1,14 +1,18 @@
 import re
 import json
 import urllib.parse
+import time
 from datetime import datetime, timedelta, timezone
 from google.cloud import bigquery, storage, logging_v2
-from config_log import (
-    BQ_PROJECT_ID, BQ_DATASET, BQ_VIEW_NAME_NO_CLUSTER, BQ_DEST_TABLE_CLUSTER_FROM_LOG,
-    GCS_PROJECT_ID, GCS_BUCKET_NAME
+import save_log_utils as utils
+from config import (
+    BQ_PROJECT_ID, BQ_DATASET, 
+    GCS_PROJECT_ID, GCS_BUCKET_NAME,
+    LOG_PROJECT_ID
 )
 
-LOG_PROJECT_ID = "cloud-ml-auto-solutions"
+BQ_VIEW_NAME_NO_CLUSTER = "last_one_run_wo_cluster"
+BQ_DEST_TABLE_CLUSTER_FROM_LOG = "cluster_info_from_log"
 
 def parse_zulu(dt_str):
     """Parse Zulu-format datetime like 2025-08-10T00:00:00Z"""
@@ -47,20 +51,10 @@ def build_log_filter(dag_id, run_id, task_id_prefix, exec_date, start_time, end_
         f'timestamp <= "{end_time.isoformat()}"',
         #f'SEARCH("{search_keyword}")'
     ]
-    search_condition = f'(textPayload: "response.json" OR SEARCH("{search_keyword}"))'
+    search_condition = f'(textPayload: "response.json" OR textPayload: "xlml_metadata" OR SEARCH("{search_keyword}"))'
     filter_parts.append(search_condition)
 
     return "\n".join(filter_parts)
-
-def query_logs(filter_str, log_project_id, page_size):
-    """Query logs from Cloud Logging."""
-    client = logging_v2.Client(project=log_project_id)
-    entries = list(client.list_entries(
-        filter_=filter_str,
-        page_size=page_size,
-    ))
-    return entries
-
 
 def save_to_gcs_and_load_bq(data, schema):
     """Save data to GCS as NDJSON and load to BigQuery with truncate mode."""
@@ -101,7 +95,7 @@ def test():
     filter_str = "\n".join(filter_parts)
     print(f'{filter_str}')
 
-    entries = query_logs(filter_str, LOG_PROJECT_ID, 10)
+    entries = utils.query_logs(filter_str, LOG_PROJECT_ID, 10)
     for e in entries:
         payload_str = e.payload if hasattr(e, "payload") else str(e)
 
@@ -118,7 +112,7 @@ def parse_cluster_metadata(payload_string):
     # 1. Check for and remove the 'xlml_metadata ' prefix.
     #    The `strip()` method is used to remove any leading/trailing whitespace.
     cleaned_string = payload_string.lstrip().replace('xlml_metadata ', '', 1).strip()
-
+    print(f'xlml_metadata...{cleaned_string}')
     try:
         # 2. Parse the cleaned string as a JSON object.
         metadata = json.loads(cleaned_string)
@@ -143,15 +137,18 @@ def parse_cluster_metadata(payload_string):
         return parsed_data
     except json.JSONDecodeError as e:
         print(f"Error: Failed to decode JSON payload after cleaning. Details: {e}")
-        return None
+        return None, None, None
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-        return None
-    return parsed_data
+        return None, None, None
+    if parsed_data:
+        return parsed_date.name, parsed_data.zone, parsed_data.project
+    return None, None, None
 
 
 def get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_end_date):
     cluster_name = None
+    cluster_region = None
     project_name = None
     filter_str = build_log_filter(
         dag_id, run_id, test_id, extract_execution_date_from_run_id(run_id),
@@ -159,39 +156,150 @@ def get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_en
     )
 
     payload_str = None
-    not_from_cred = True
-    pattern = re.compile(r"gcloud container clusters get-credentials\s+(\S+)")
-    entries = query_logs(filter_str, LOG_PROJECT_ID, 10)
+    from_cred = False
+    #pattern = re.compile(r"gcloud container clusters get-credentials\s+(\S+)")
+    #pattern = re.compile(
+    #    r'gcloud container clusters get-credentials\s+([^\s]+)'  
+    #    r'(?:\s+(?:--region|--zone)\s+([^\s]+))?',             
+    #    re.IGNORECASE
+    #)
+
+    #pattern_gke_credentials = re.compile(
+    #    r"gcloud\s+container\s+clusters\s+get-credentials\s+([^\s]+)"  # Group 1: Cluster Name
+    #    r"(?:\s+(?:--region|--zone)\s+([^\s]+))?"                    # Group 2 (Optional): Location (Region or Zone)
+    #    r"(?:.*?\s+--project\s+([a-z0-9-]+))",                         # Group 3: Project ID
+    #    re.IGNORECASE | re.DOTALL  # DOTALL allows '.' to match newlines if logs are multiline
+    #)
+    pattern_gke_credentials = re.compile(
+        r"gcloud\s+container\s+clusters\s+get-credentials\s+([^\s;]+)" # Group 1: Cluster Name (Your core working part)
+        r"(?:"                                                        # Start non-capturing group for location
+        r".*?"                                                    # Non-greedy match for anything between name and location flag
+        r"[\s;]+"                                                 # Separator (space or semicolon)
+        r"(?:--region|--zone)"                                    # Match --region OR --zone
+        r"[\s;]+"                                                 # Separator
+        r"([^\s;]+)"                                              # Group 2: Captures the Location
+        r")?"                                                         # Make Location Optional
+        r"(?:"                                                        # Start non-capturing group for project
+        r".*?"                                                    # Non-greedy match for anything between name/location and project flag
+        r"[\s;]+"                                                 # Separator
+        r"--project"                                              # Match --project
+        r"[\s;]+"                                                 # Separator
+        r"([a-z0-9-]+)"                                           # Group 3: Captures the Project ID
+        r")?",                                                        # Make Project ID Optional
+        re.IGNORECASE | re.DOTALL
+    )
+    entries = utils.query_logs(filter_str, LOG_PROJECT_ID, 10)
     for e in entries:
         payload_str = e.payload if hasattr(e, "payload") else str(e)
-        match = pattern.search(payload_str)
-        if match:
-            cluster_name = match.group(1)
-            not_from_cred = False
-            break
-        elif 'response.json' in payload_str:
-            project_name, cluster_name = parse_gke_info_from_json(payload_str)
+        #print(f'payload:{payload_str}')
+        match_gke = pattern_gke_credentials.search(payload_str)
+        #print(f'match_gke?{match_gke}')
+        if match_gke:
+            cluster_name = match_gke.group(1)
+            cluster_region = match_gke.group(2) # Will be None if --region/--zone not used
+            project_name = match_gke.group(3)
+            from_cred = True
+            break 
 
-    if (cluster_name and not_from_cred):
-        #pattern_project = re.compile(r"gcloud config set project (\S+)")
-        #pattern_project = re.compile(r"gcloud config set project\s+([^']+)")
+        #match = pattern.search(payload_str)
+        #if match:
+        #    cluster_name = match.group(1)
+            #cluster_location = match.group(2)
+        #    from_cred = True
+        #    break
+        elif 'response.json' in payload_str:
+            cluster_name, cluster_region, project_name = parse_gke_info_from_json(payload_str)
+            if (cluster_name):
+                break;
+        #elif 'xlml_metadata' in payload_str:
+        #    cluster_name, cluster_region, project_name = parse_cluster_metadata(payload_str)
+        #    if (cluster_name):
+        #        break
+
+
+    if (cluster_name and from_cred and project_name is None):
         pattern_project_1 = re.compile(r"gcloud\s+config\s+set\s+project\s+([a-z0-9-]+)")
-        pattern_project_2 = re.compile(
-            r"gcloud\s+container\s+clusters\s+get-credentials\s+[^\s]+"
-            r"(?:\s+--region\s+[^\s]+)?"
-            r"\s+--project\s+([a-z0-9-]+)"
-        )
+        #pattern_project_2 = re.compile(
+        #    r"gcloud\s+container\s+clusters\s+get-credentials\s+[^\s]+"
+        #    r"(?:\s+--region\s+[^\s]+)?"
+        #    r"\s+--project\s+([a-z0-9-]+)"
+        #)
         #match = pattern_project.search(payload_str)
         #if match:
         #    project_name = match.group(1)
-        for regex in (pattern_project_1, pattern_project_2):
-            match = regex.search(payload_str)
-            if match:
-                project_name = match.group(1)
-                break
-    return cluster_name, project_name
+        #for regex in (pattern_project_1, pattern_project_2):
+        match = pattern_project_1.search(payload_str)
+        if match:
+            project_name = match.group(1)
+        #        break
+    return cluster_name, cluster_region, project_name
 
 def parse_gke_info_from_json(log_string):
+    """
+    Parses a log string to extract the GKE cluster name, region, and project.
+
+    Args:
+        log_string: The log entry as a string.
+
+    Returns:
+        A tuple containing (gke_cluster_name, region_id, project_id) or (None, None, None) if not found.
+    """
+    print(f'in gke_json parse......')
+    try:
+        # Use regex to extract the JSON-like part of the string.
+        # This regex will now specifically look for the content after 'response.json() '
+        # which starts the dictionary.
+        match = re.search(r"response\.json\(\)\s*(\{.*\})", log_string, re.DOTALL)
+        if not match:
+            return None, None, None
+
+        # The captured group is the JSON-like string.
+        json_string = match.group(1).replace("'", '"')
+
+        # Find the last closing brace and slice the string up to that point
+        # to ensure valid JSON structure.
+        last_brace_index = json_string.rfind('}')
+        if last_brace_index != -1:
+            json_string = json_string[:last_brace_index + 1]
+
+        # Safely load the JSON string into a Python dictionary.
+        data = json.loads(json_string)
+
+        # Access the nested keys to get the GKE cluster path.
+        gke_path = data.get('config', {}).get('gkeCluster')
+
+        if gke_path:
+            # The GKE path format is: projects/PROJECT_ID/locations/REGION/clusters/CLUSTER_NAME
+            parts = gke_path.split('/')
+
+            # Check if the path has the expected number of parts (at least 6: p/ID/l/LOC/c/NAME)
+            if len(parts) >= 6 and parts[0] == 'projects' and parts[2] == 'locations' and parts[4] == 'clusters':
+                # parts[1] is the project ID
+                project_id = parts[1]
+
+                # parts[3] is the region/location
+                region_id = parts[3]
+
+                # parts[5] is the cluster name (or parts[-1] if the path is longer)
+                cluster_name = parts[-1]
+
+                # IMPORTANT: Update the return order as requested
+                return cluster_name, region_id, project_id
+
+            # Fallback for old/unexpected path formats (only getting project and cluster name)
+            elif len(parts) >= 2:
+                project_id = parts[1]
+                cluster_name = parts[-1]
+                return cluster_name, None, project_id
+
+
+    except (json.JSONDecodeError, AttributeError, IndexError, TypeError) as e:
+        print(f"Error parsing log: {e}")
+        return None, None, None
+
+    return None, None, None
+
+def parse_gke_info_from_json_old(log_string):
     """
     Parses a log string to extract the GKE cluster name and its project.
 
@@ -207,7 +315,7 @@ def parse_gke_info_from_json(log_string):
         # This part assumes the log message is a Python dictionary representation.
         match = re.search(r"(\{.*\})", log_string)
         if not match:
-            return None, None
+            return None, None, None
 
         # Convert the string representation of a dictionary to a valid JSON string.
         # This handles the use of single quotes and the trailing comma issue.
@@ -232,11 +340,11 @@ def parse_gke_info_from_json(log_string):
             parts = gke_path.split('/')
             project_id = parts[1]
             cluster_name = parts[-1]
-            return project_id, cluster_name
+            return cluster_name, None, project_id
 
     except (json.JSONDecodeError, AttributeError, IndexError) as e:
         print(f"Error parsing log: {e}")
-        return None, None
+        return None, None, None
 
 def process_test(dag_id, run_id, execution_date, test_id, test_start_date, test_end_date):
     """Process a single test, fetch logs, and build the output dictionary."""
@@ -246,18 +354,20 @@ def process_test(dag_id, run_id, execution_date, test_id, test_start_date, test_
 
     if not test_start_date or not test_end_date:
         print(f"Skipping {dag_id} / {test_id} due to missing start/end date.")
-        return cluster_name, project_name, region
+        return cluster_name, region, project_name
 
-    cluster_name, project_name = get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_end_date)
+    cluster_name, region, project_name = get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_end_date)
     #print(f'dag:{dag_id},test_id:{test_id},cluster_name:{cluster_name},project:{project_name}')            
 
-    return cluster_name, project_name, region
+    return cluster_name, region, project_name
 
 
 def save():
     start_date = datetime.now()
     bq_client = bigquery.Client(project=BQ_PROJECT_ID)
 
+    #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}` where dag_id='a3mega_recipes_mixtral-8x7b_nemo'"
+    #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}` where dag_id='mlcompass_simple_dag'"
     query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}`"
     rows = list(bq_client.query(query).result())
 
@@ -265,6 +375,7 @@ def save():
         bigquery.SchemaField("dag_id", "STRING"),
         bigquery.SchemaField("test_id", "STRING"),
         bigquery.SchemaField("run_id", "STRING"),
+        bigquery.SchemaField("run_start_date", "TIMESTAMP"),
         bigquery.SchemaField("cluster_name", "STRING"),
         bigquery.SchemaField("region", "STRING"),
         bigquery.SchemaField("project_name", "STRING"),
@@ -272,9 +383,8 @@ def save():
 
     output_data = []
     for row in rows:
-        
-        cluster_name, project_name, region = process_test(row.dag_id, row.run_id, row.execution_date, row.test_id, row.test_start_date, row.test_end_date)
-        print(f'{row.dag_id}.{row.test_id} cluster:{cluster_name},project:{project_name}')
+        cluster_name, region, project_name = process_test(row.dag_id, row.run_id, row.execution_date, row.test_id, row.test_start_date, row.test_end_date)
+        print(f'{row.dag_id}.{row.test_id} cluster:{cluster_name},region:{region},project:{project_name}')
 
         #if cluster_name and project_name:
         if cluster_name:
@@ -282,6 +392,7 @@ def save():
             "dag_id": row.dag_id,
             "test_id": row.test_id,
             "run_id": row.run_id,
+            "run_start_date": row.run_start_date,
             "cluster_name": cluster_name,
             "region": region,
             "project_name":project_name 
@@ -295,4 +406,3 @@ def save():
 
 if __name__ == "__main__":
     save()
-    #test()

@@ -5,32 +5,25 @@ import json
 import uuid
 import os
 import re
-import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from kubernetes import client, config
+from config import BQ_PROJECT_ID, BQ_DATASET, GCS_BUCKET_NAME
 
 # --- Step 1: Config ---
-project_id = "cienet-cmcs"
-dataset_id = "amy_xlml_poc_prod"
+project_id = BQ_PROJECT_ID
+dataset_id = BQ_DATASET
 view_name = "cluster_view"
 table_id = "gke_cluster_info"
-bucket_name = "amy-xlml-poc-prod"
-blob_path = f"tmp/gke_cluster_info_{uuid.uuid4()}.jsonl" 
+bucket_name = GCS_BUCKET_NAME
+blob_path = f"tmp/gke_cluster_info_{uuid.uuid4()}.jsonl"
 max_rows = 0  # Set <= 0 to fetch all rows
-
-# --- Google Sheets Config ---
-GSPREAD_INSERT_ENABLED = False
-GSPREAD_SHEET_ID = '1FkyzvC0HGxFPGjIpCV4pWHB_QFWUOtLPIlDfnBNvt4Q' 
-GSPREAD_WORKSHEET_NAME = 'unhealthy_clusters' 
-GSPREAD_CREDS_PATH = 'cienet-cmcs-86d8fc4f484f.json' 
-
 
 # --- Step 2: Get rows from BQ view ---
 def get_clusters_from_view():
     client = bigquery.Client(project=project_id)
     limit_clause = f"LIMIT {max_rows}" if max_rows > 0 else ""
     query = f"""
-        SELECT project_name, cluster_name
+        SELECT project_name, cluster_name, region
         FROM `{project_id}.{dataset_id}.{view_name}`
         {limit_clause}
     """
@@ -243,61 +236,30 @@ def insert_gspread_rows(rows):
         print(f"An error occurred while writing to Google Sheet: {e}")
 
 # --- Step 9: Main process ---
-def main():
+def save():
     start_date = datetime.now()
     rows = get_clusters_from_view()
     if not rows:
         print("No rows found in view.")
         return
 
-    rows_with_project = [r for r in rows if r.get("project_name")]
     rows_without_project = [r for r in rows if not r.get("project_name")]
-
-    cluster_locs = {}
-    projects = set(row.project_name for row in rows_with_project)
-    all_clusters_by_name = {}
-    print(f"Fetching clusters from {len(projects)} distinct projects...")
-
-    for idx, project in enumerate(projects, 1):
-        try:
-            clusters = list_clusters_for_project(project)
-            print(f"[{idx}/{len(projects)}] {project}: {len(clusters)} clusters")
-            for c in clusters:
-                key = f"{project}::{c.name}"
-                cluster_locs[key] = c.location
-                all_clusters_by_name[c.name] = project
-        except Exception as e:
-            print(f"Error listing clusters for {project}: {e}")
-
-    for row in rows_without_project:
-        cluster_name = row.get("cluster_name")
-        if cluster_name in all_clusters_by_name:
-            # If we found the cluster in one of the previously checked projects,
-            # use that project to get the location.
-            project_name = all_clusters_by_name[cluster_name]
-            # Convert the BQ Row object to a dictionary
-            row_dict = dict(row.items())
-
-            # Add the inferred project name to the new dictionary
-            row_dict["project_name"] = project_name
-
-            # Append the new dictionary to the list
-            rows_with_project.append(row_dict)
-            key = f"{project}::{cluster_name}"
-            print(f"Found project '{project}' for cluster '{cluster_name}'")
-        else:
-            print(f"Could not determine project for cluster '{cluster_name}'")        
+    rows_without_region = [r for r in rows if not r.get("region")]
+    if (rows_without_project):
+        print(f'Some rows without project!!')        
+        return
+    if (rows_without_region):
+        print(f'Some rows without region!!')        
+        return
 
     result_rows = []
     gspread_rows_to_insert = []
     load_time = datetime.now(timezone.utc).isoformat()
 
-    for row in rows_with_project:
+    for row in rows:
         proj = row.project_name
         cname = row.cluster_name
-        op_region = None
-        key = f"{proj}::{cname}"
-        location = cluster_locs.get(key)
+        location = row.region
 
         cluster_status = "NOT EXIST"
         cluster_status_message = None
@@ -306,50 +268,30 @@ def main():
 
         now_utc = datetime.now(timezone.utc).isoformat()
 
-        if not location:
-            # Matches fixed header: Issue Type, Project ID, Cluster Name, Cluster Status, Cluster Status Message, Node Pool Name, Node Pool Status, Node Pool Status Message, Appended at
-            gspread_rows_to_insert.append([
-                "Cluster", proj, cname, "NOT EXIST", "Cluster not found in GKE API.", "", "", "", now_utc
-            ])
-        else:
-            try:
-                info = get_cluster_status(proj, location, cname)
-                cluster_status = info["status"]
-                cluster_status_message = info["status_message"]
-                cluster_mode = info["cluster_mode"]
-                node_pools_data = info["node_pools"]
+        try:
+            info = get_cluster_status(proj, location, cname)
+            cluster_status = info["status"]
+            cluster_status_message = info["status_message"]
+            cluster_mode = info["cluster_mode"]
+            node_pools_data = info["node_pools"]
 
-                # Check cluster status for Gspread
-                if cluster_status != "RUNNING":
-                    gspread_rows_to_insert.append([
-                        "Cluster", proj, cname, cluster_status, cluster_status_message, "", "", "", now_utc
-                    ])
-
-                # Check each node pool status for Gspread
-                for np in node_pools_data:
-                    if np["status"] != "RUNNING":
-                        gspread_rows_to_insert.append([
-                            "NodePool", proj, cname, cluster_status, cluster_status_message, np["name"], np["status"], np["status_message"], now_utc
-                        ])
-
-            except NotFound:
-                cluster_status = "NOT EXIST"
-                gspread_rows_to_insert.append([
-                    "Cluster", proj, cname, "NOT EXIST", "Cluster not found in GKE API.", "", "", "", now_utc
-                ])
-            except Exception as e:
-                print(f"Error fetching details for {proj}/{cname}: {e}")
-                cluster_status = "ERROR"
-                cluster_status_message = str(e)
-                gspread_rows_to_insert.append([
-                    "Cluster", proj, cname, cluster_status, cluster_status_message, "", "", "", now_utc
-                ])
-
+            # Check cluster status for Gspread
+            if cluster_status != "RUNNING":
+                print(f'Found NOT RUNNING cluster:{proj}.{location}.{cname}')
+            for np in node_pools_data:
+                if np["status"] != "RUNNING":
+                    print(f'Found NOT RUNNING nodepool cluster:{proj}.{location}.{cname}.{np["name"]}')
+        except NotFound:
+            cluster_status = "NOT EXIST"
+            print(f'Found NOT EXIST cluster:{proj}.{location}.{cname}')
+        except Exception as e:
+            print(f"Error fetching details for {proj}.{location}.{cname}: {e}")
+            cluster_status = "ERROR"
+            cluster_status_message = str(e)
         result_rows.append({
             "project_id": proj,
             "cluster_name": cname,
             "cluster_mode": cluster_mode,
-            "op_region": op_region,
             "region": location,
             "load_time": load_time,
             "status": cluster_status,
@@ -364,10 +306,6 @@ def main():
     else:
         print("No data to process for BigQuery load.")
 
-    # Insert rows into Google Sheet
-    if GSPREAD_INSERT_ENABLED and gspread_rows_to_insert:
-        insert_gspread_rows(gspread_rows_to_insert)
-
     # Clean up the local file if it was created
     if 'blob_path' in locals() and os.path.exists(blob_path):
         os.remove(blob_path)
@@ -378,4 +316,4 @@ def main():
 
 # --- Run ---
 if __name__ == "__main__":
-    main()
+    save()

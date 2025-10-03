@@ -3,7 +3,11 @@ WITH
 -- Aggregate per test_id 
 latest_runs AS (
   SELECT base.dag_id, runs.run_id, runs.execution_date, runs.start_date run_start_date, runs.end_date run_end_date, 
-    IF(runs.is_passed = 1, 'success', 'failed') AS run_status
+    --IF(runs.is_passed = 1, 'success', 'failed') 
+    CASE
+      WHEN runs.is_passed = 1 THEN 'success'
+      WHEN runs.is_partial_passed = 1 THEN 'partial'
+      ELSE 'failed' END AS run_status
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs) AS runs
   WHERE run_order_desc=1
@@ -18,6 +22,18 @@ latest_runs_tests AS (
   WHERE run_order_desc=1
 ),
 
+task_orders AS (
+  SELECT dag_id,task_id,disp_order
+  FROM `cienet-cmcs.amy_xlml_poc_prod.dag_task_order` r
+  LEFT JOIN UNNEST(r.task_order) t
+),
+
+task_instance_order AS (
+  SELECT t.dag_id, t.run_id, t.task_id,start_date, end_date, try_number, state, disp_order
+  FROM `amy_xlml_poc_prod.task_instance` t
+  LEFT JOIN task_orders o ON t.dag_id=o.dag_id AND t.task_id=o.task_id
+),
+
 tasks_enriched AS (
   SELECT
     b.dag_id,
@@ -28,10 +44,11 @@ tasks_enriched AS (
       t.start_date AS task_start_date,
       t.end_date AS task_end_date,
       t.try_number AS try_number,
-      t.state AS state
+      t.state AS task_status,
+      t.disp_order AS disp_order
     ) ORDER BY t.start_date) AS tasks
   FROM latest_runs_tests b
-  JOIN `amy_xlml_poc_prod.task_instance` t
+  JOIN task_instance_order t
     ON b.dag_id = t.dag_id
    AND b.run_id = t.run_id
    AND b.test_id = SPLIT(t.task_id, '.')[OFFSET(0)]
@@ -70,7 +87,7 @@ run_agg_with_cluster AS (
       unnested_tests.test_status,
       unnested_tests.tasks,
       t2.project_name AS cluster_project,
-      t2.cluster_name,
+      t2.cluster_name, t2.region,
       t2.accelerator_type, t2.accelerator_family,
       t3.machine_families
     ) ORDER BY unnested_tests.test_id) AS tests
@@ -82,7 +99,7 @@ run_agg_with_cluster AS (
     ON unnested_tests.test_id = t2.test_id AND t1.dag_id = t2.dag_id
   LEFT JOIN
     `amy_xlml_poc_prod.gke_cluster_info_view` AS t3
-    ON t2.project_name = t3.project_id AND t2.cluster_name = t3.cluster_name    
+    ON t2.project_name = t3.project_id AND t2.cluster_name = t3.cluster_name AND t2.region = t3.region
   GROUP BY
     t1.dag_id,
     t1.run_id
