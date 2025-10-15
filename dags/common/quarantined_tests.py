@@ -16,6 +16,8 @@
 
 import dataclasses
 import fnmatch
+import logging
+import os
 from typing import Set
 
 from airflow.models import Variable
@@ -52,6 +54,20 @@ def match_quarantine_patterns(
   return False
 
 
+def safe_get_from_variable(key: str, default_var: str):
+  """
+  Check if the current runtime is GitHub Actions. Ignoring getting variable in GitHub Actions to prevent from
+  spamming logs.
+  """
+  value = default_var
+  is_CI = os.getenv("GITHUB_ACTIONS", "false").lower() == "true"
+  if is_CI:
+    logging.info("In GitHub Actions, skip getting variables")
+  else:
+    value = Variable.get(key, default_var=default_var)
+  return value
+
+
 """
 The quarantine list is defined by a set of UNIX Shell Glob Patterns. 
 These patterns are used to match and quarantine tests. 
@@ -63,7 +79,7 @@ Sample values:
 - maxd-sdxl-* (Matches all 'maxd-sdxl-' tests)
 """
 quarantine_patterns = parse_quarantine_patterns(
-    Variable.get("quarantine_patterns", "")
+    safe_get_from_variable("quarantine_patterns", "")
 )
 
 
