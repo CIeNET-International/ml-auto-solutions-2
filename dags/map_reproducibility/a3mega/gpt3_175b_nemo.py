@@ -17,9 +17,11 @@
 import datetime
 
 from airflow import models
+from airflow.utils.task_group import TaskGroup
+
 from dags import composer_env
 from dags.map_reproducibility.utils.common_utils import get_scheduled_time
-from dags.map_reproducibility.utils.common_utils import run_nemo_workload
+from dags.map_reproducibility.utils.common_utils import run_nemo_workload, run_nemo_workload_with_quarantine
 
 
 MODEL_ID = "gpt3-175b"
@@ -41,9 +43,10 @@ SOFTWARE_ID = "pytorch_nemo"
 IMAGE_VERSION = "nemo_workload:24.07"
 KUEUE_NAME = "multislice-kueue"
 NUM_GPUS = 256
+DAG_ID = f"{HYPERCOMPUTER}_recipes_test_{MODEL_ID}_{FRAMEWORK}"
 
 with models.DAG(
-    dag_id=f"{HYPERCOMPUTER}_recipes_{MODEL_ID}_{FRAMEWORK}",
+    dag_id=DAG_ID,
     schedule=SCHEDULED_TIME,
     tags=[
         "reproducibility",
@@ -55,6 +58,9 @@ with models.DAG(
     start_date=datetime.datetime(2024, 11, 15),
     catchup=False,
 ) as dag:
+  quarantine_task_group = TaskGroup(
+      group_id="Quarantine", dag=dag, prefix_group_id=False
+  )
   run_nemo_workload(
       hypercomputer=HYPERCOMPUTER,
       model_id=MODEL_ID,
@@ -62,4 +68,14 @@ with models.DAG(
       precision=PRECISION,
       kueue_name=KUEUE_NAME,
       metrics_model_id=MODEL_ID,
+  )
+  run_nemo_workload_with_quarantine(
+      hypercomputer=HYPERCOMPUTER,
+      model_id=MODEL_ID,
+      framework=FRAMEWORK,
+      precision=PRECISION,
+      kueue_name=KUEUE_NAME,
+      metrics_model_id=MODEL_ID,
+      test_name=DAG_ID,
+      quarantine_task_group=quarantine_task_group,
   )
