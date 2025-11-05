@@ -7,6 +7,7 @@ all_dags AS (
   FROM `amy_xlml_poc_prod.dag` d
   WHERE dag_id IN
   (SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.serialized_dag`)
+  AND dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
 ),
 
 
@@ -89,22 +90,56 @@ accel_matches AS (
     UNNEST(c.tag_names) AS tag2
   WHERE
     tag1 = tag2
+),
+accelerator_categorization AS (
+  WITH all_accelerators AS (
+     SELECT
+      ta.dag_id,
+      accelerator_family AS accelerator
+    FROM
+      `amy_xlml_poc_prod.tests_accelerator_view` ta
+    LEFT JOIN `amy_xlml_poc_prod.quarantine_view` q ON ta.dag_id=q.dag_id and ta.test_id=q.test_id
+    WHERE
+      accelerator_family IS NOT NULL AND (q.is_quarantine IS NULL OR q.is_quarantine = FALSE)
+    UNION DISTINCT
+    SELECT
+      dag_id,
+      accelerator
+    FROM
+      accel_matches
+    WHERE
+      accelerator IS NOT NULL AND rn = 1
+  )
+  
+  SELECT
+    dag_id,
+    --ARRAY_AGG(DISTINCT accelerator) AS unique_accelerators,
+    STRING_AGG(
+      DISTINCT accelerator, 
+      '+' 
+      ORDER BY accelerator
+    ) AS accelerator
+  FROM
+    all_accelerators
+  GROUP BY
+    dag_id
 )
 
 SELECT
     d.dag_id,
-    b.is_paused,
-    b.schedule_interval,
+    d.is_paused,
+    d.schedule_interval,
     ds.formatted_schedule,
-    d.tags,
+    b.tags,
     dco.cleaned_owners AS dag_owners, 
     p.category,
     a.accelerator,
-    b.description
-  FROM dag_with_tag d
+    d.description
+  FROM all_dags d
   LEFT JOIN category_matches p ON d.dag_id = p.dag_id AND p.rn = 1
-  LEFT JOIN accel_matches a ON d.dag_id = a.dag_id AND a.rn = 1
-  JOIN all_dags b ON d.dag_id=b.dag_id
+  --LEFT JOIN accel_matches a ON d.dag_id = a.dag_id AND a.rn = 1
+  LEFT JOIN accelerator_categorization  a ON d.dag_id = a.dag_id 
+  LEFT JOIN dag_with_tag b ON d.dag_id=b.dag_id
   LEFT JOIN dag_cleaned_owners dco ON d.dag_id = dco.dag_id
   LEFT JOIN dag_sch ds ON d.dag_id = ds.dag_id
  

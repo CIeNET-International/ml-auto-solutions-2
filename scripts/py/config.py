@@ -23,6 +23,10 @@ PERSIST_PAIR = {
         'view_name': 'statistic_last_window_view',
         'table_name': 'statistic_last_window'
     },
+    'run_status': {
+        'view_name': 'dag_run_status_base_view',
+        'table_name': 'dag_run_status_base'
+    },
     'dag': {
         'view_name': 'all_dag_view',
         'table_name': 'all_dag'

@@ -116,6 +116,13 @@ def parse_cluster_metadata(payload_string):
     try:
         # 2. Parse the cleaned string as a JSON object.
         metadata = json.loads(cleaned_string)
+        accelerator = metadata.get("accelerator")
+        if accelerator:
+            print(f'***accelerator found {accelerator.get("name")}')
+        if metadata and metadata.get("cluster_project"):
+            print('*********************************************************')
+            print('*********************************************************')
+            return metadata.get("cluster_project"), metadata.get("zone"), metadata.get("cluster_project")
 
         # 3. Extract and organize the relevant fields.
         parsed_data = {
@@ -134,7 +141,9 @@ def parse_cluster_metadata(payload_string):
                 "gcs_path": metadata.get("gcs_path")
             }
         }
-        return parsed_data
+        return None, None, None
+
+        #return parsed_data
     except json.JSONDecodeError as e:
         print(f"Error: Failed to decode JSON payload after cleaning. Details: {e}")
         return None, None, None
@@ -188,33 +197,43 @@ def get_cluster_info_from_logs(dag_id, run_id, test_id, test_start_date, test_en
         r")?",                                                        # Make Project ID Optional
         re.IGNORECASE | re.DOTALL
     )
+    # Region/Zone value
+    pattern_region = re.compile(
+        r"(?:--region|--zone)[=\s]([^\s;]+)",
+        re.IGNORECASE
+    )
+    # Project ID value
+    pattern_project = re.compile(
+        r"--project[=\s]([^\s;]+)",
+        re.IGNORECASE
+    )
     entries = utils.query_logs(filter_str, LOG_PROJECT_ID, 10)
     for e in entries:
         payload_str = e.payload if hasattr(e, "payload") else str(e)
-        #print(f'payload:{payload_str}')
         match_gke = pattern_gke_credentials.search(payload_str)
-        #print(f'match_gke?{match_gke}')
         if match_gke:
+            print(f'log: {payload_str}')
             cluster_name = match_gke.group(1)
             cluster_region = match_gke.group(2) # Will be None if --region/--zone not used
             project_name = match_gke.group(3)
+            if (cluster_name and cluster_region is None):
+                region_match = pattern_region.search(payload_str)
+                cluster_region = region_match.group(1) if region_match else None
+            if (cluster_name and project_name is None):
+                project_match = pattern_project.search(payload_str)
+                project_name = project_match.group(1) if project_match else None
+            print(f'region:{cluster_region} project:{project_name}')
             from_cred = True
             break 
-
-        #match = pattern.search(payload_str)
-        #if match:
-        #    cluster_name = match.group(1)
-            #cluster_location = match.group(2)
-        #    from_cred = True
-        #    break
         elif 'response.json' in payload_str:
             cluster_name, cluster_region, project_name = parse_gke_info_from_json(payload_str)
             if (cluster_name):
                 break;
-        #elif 'xlml_metadata' in payload_str:
-        #    cluster_name, cluster_region, project_name = parse_cluster_metadata(payload_str)
-        #    if (cluster_name):
-        #        break
+        elif 'xlml_metadata' in payload_str:
+            #metadata = parse_cluster_metadata(payload_str)
+            cluster_name, cluster_region, project_name = parse_cluster_metadata(payload_str)
+            if (cluster_name):
+                break
 
 
     if (cluster_name and from_cred and project_name is None):
@@ -368,6 +387,8 @@ def save():
 
     #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}` where dag_id='a3mega_recipes_mixtral-8x7b_nemo'"
     #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}` where dag_id='mlcompass_simple_dag'"
+    #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}` where dag_id='maxtext_regular_save'"
+    #query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}` where dag_id='pw_mcjax_benchmark_recipe' and test_id='clean_up_pod'"
     query = f"SELECT * FROM `{BQ_PROJECT_ID}.{BQ_DATASET}.{BQ_VIEW_NAME_NO_CLUSTER}`"
     rows = list(bq_client.query(query).result())
 

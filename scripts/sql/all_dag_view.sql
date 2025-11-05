@@ -39,11 +39,16 @@ SELECT d.dag_id,
   s.total_tests, s.total_tests_qe, s.total_tests_q,
   s.test_ids, s.test_ids_qe, s.test_ids_q,
   s.last_exec, s.last_succ,
+  s60.total_runs total_runs_60,
+  s60.passed_runs passed_runs_60,
+  s60.partial_passed_runs partial_passed_runs_60,
+  s60.runs_pass_rate runs_pass_rate_60,
+  s60.runs_partial_pass_rate runs_partial_pass_rate_60,  
   s30.total_runs total_runs_30,
   s30.passed_runs passed_runs_30,
   s30.partial_passed_runs partial_passed_runs_30,
   s30.runs_pass_rate runs_pass_rate_30,
-  s30.runs_partial_pass_rate runs_partial_pass_rate_30,
+  s30.runs_partial_pass_rate runs_partial_pass_rate_30,  
   s1.total_runs total_runs_1,
   s1.passed_runs passed_runs_1,
   s1.partial_passed_runs partial_passed_runs_1,
@@ -65,5 +70,6 @@ LEFT JOIN statistic s1 ON d.dag_id = s1.dag_id AND s1.window_value = 1
 LEFT JOIN statistic s3 ON d.dag_id = s3.dag_id AND s3.window_value = 3
 LEFT JOIN statistic s7 ON d.dag_id = s7.dag_id AND s7.window_value = 7
 LEFT JOIN statistic s30 ON d.dag_id = s30.dag_id AND s30.window_value = 30
+LEFT JOIN statistic s60 ON d.dag_id = s60.dag_id AND s60.window_value = 60
 
 

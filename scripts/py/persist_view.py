@@ -1,25 +1,20 @@
 import sys
 from google.cloud import bigquery
-from config_persist import ENV, PERSIST_PAIR
 from datetime import datetime
+from config import BQ_PROJECT_ID, BQ_DATASET, PERSIST_PAIR
 
-def persist_view_to_table(env: str, pair_name: str):
+def persist_view_to_table(pair_name: str):
     """
     Materialize a specific BigQuery view into a table for a given environment.
     """
-    if env not in ENV:
-        raise ValueError(f"Unknown environment '{env}'. "
-                         f"Available options: {list(ENV.keys())}")
-    
     # Direct dictionary lookup for the pair
     target_pair = PERSIST_PAIR.get(pair_name)
     if not target_pair:
         raise ValueError(f"Unknown pair '{pair_name}'. "
                          f"Available pairs: {list(PERSIST_PAIR.keys())}")
 
-    settings = ENV[env]
-    project_id = settings["project_id"]
-    dataset_id = settings["dataset_id"]
+    project_id = BQ_PROJECT_ID
+    dataset_id = BQ_DATASET
     view_name = target_pair["view_name"]
     table_name = target_pair["table_name"]
 
@@ -38,23 +33,22 @@ def persist_view_to_table(env: str, pair_name: str):
     query_job = client.query(sql, job_config=job_config)
     query_job.result()
 
-    print(f"{env.upper()}: View `{view_id}` for pair '{pair_name}' "
+    print(f"View `{view_id}` for pair '{pair_name}' "
           f"persisted as table `{table_id}`")
 
-
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print(f"Usage: python {sys.argv[0]} <env> <pair_name>")
-        print(f"Available envs: {list(ENV.keys())}")
-        print(f"Available pairs: {list(PERSIST_PAIR.keys())}")
-        sys.exit(1)
-
+def persist(pair_name:str):
     start_time = datetime.now()
-    env = sys.argv[1]
-    pair_name = sys.argv[2]
-    persist_view_to_table(env, pair_name)
+    persist_view_to_table(pair_name)
 
     end_time = datetime.now()
     duration = end_time - start_time
     print(f'start: {start_time}, end: {end_time}, duration: {duration}')
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(f"Usage: python {sys.argv[0]} <pair_name>")
+        print(f"Available pairs: {list(PERSIST_PAIR.keys())}")
+        sys.exit(1)
+
+    persist(sys.argv[1])
 

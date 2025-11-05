@@ -16,7 +16,7 @@ from config import (
 # Quota Limit: 200 ReadRequestsPerMinutePerProject.
 # Minimum delay between requests: 60 seconds / 200 requests = 0.3 seconds.
 # Using 0.35 seconds for a safe buffer.
-LOGGING_API_DELAY_SECONDS = 0.35
+LOGGING_API_DELAY_SECONDS = 0.4#0.35
 
 def parse_zulu(dt_str):
     """Parse Zulu-format datetime like 2025-08-10T00:00:00Z"""
@@ -131,7 +131,7 @@ def build_log_explorer_url(filter_str, project_id):
 
 def query_logs(filter_str, log_project_id, page_size):
     """Query logs from Cloud Logging with rate limiting."""
-    print(f'QUERY:{filter_str}')
+    #print(f'QUERY:{filter_str}')
     # Introduce a delay before the API call to respect the quota limit
     time.sleep(LOGGING_API_DELAY_SECONDS) # <--- RATE LIMITING DELAY
 

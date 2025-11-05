@@ -223,7 +223,7 @@ def fetch_logs(cluster_project_id, cluster_name, region):
         f'AND timestamp <= "{end_time.isoformat()}"'
     )
 
-    entries = log_client.list_entries(filter_=filter_str, page_size=1000)
+    entries = log_client.list_entries(filter_=filter_str, page_size=1500)
     for entry in entries:
         bucket = bucket_interval(entry.timestamp)
         payload = entry.payload

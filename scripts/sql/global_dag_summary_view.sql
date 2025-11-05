@@ -47,6 +47,18 @@ all_dag_count AS (
     (SELECT COUNT(DISTINCT dag_id)
      FROM all_dags) AS total_dags,
 
+    (SELECT COUNT(DISTINCT dag_id)
+     FROM all_dags
+     WHERE total_runs_all>0) AS total_run_dags_eqd,     
+
+    (SELECT COUNT(DISTINCT dag_id)
+     FROM all_dags
+     WHERE total_tests=total_tests_q) AS total_run_dags_qd,     
+
+    (SELECT COUNT(DISTINCT dag_id)
+     FROM all_dags
+     WHERE is_paused=TRUE) AS total_paused,          
+    
     -- category counts as ARRAY<STRUCT<category STRING, dag_count INT64>>
     (SELECT ARRAY_AGG(STRUCT(category, category_dags) ORDER BY category)
      FROM (
@@ -63,7 +75,23 @@ all_dag_count AS (
        FROM all_dags
        GROUP BY accelerator
      )
-    ) AS accelerator_counts
+    ) AS accelerator_counts,
+
+    (SELECT ARRAY_AGG(STRUCT(category, total_tests, total_tests_qe, total_tests_q) ORDER BY category)
+     FROM (
+       SELECT category, SUM(total_tests) AS total_tests, SUM(total_tests_q) AS total_tests_q, SUM(total_tests_qe) AS total_tests_qe
+       FROM all_dags
+       GROUP BY category
+     )
+    ) AS category_tests_counts,
+
+    (SELECT ARRAY_AGG(STRUCT(accelerator, total_tests, total_tests_qe, total_tests_q) ORDER BY accelerator)
+     FROM (
+       SELECT accelerator, SUM(total_tests) AS total_tests, SUM(total_tests_q) AS total_tests_q, SUM(total_tests_qe) AS total_tests_qe
+       FROM all_dags
+       GROUP BY accelerator
+     )
+    ) AS accelerator_tests_counts,
 ),
 
 data_time AS (
@@ -78,13 +106,34 @@ data_time AS (
 ),
 
 dag_sum AS (
-  SELECT t.*, c.category_counts, c.accelerator_counts, q.total_tests, q.total_tests_qe, q.total_tests_q, q.total_runs, q.passed_runs, q.partial_passed_runs, q.total_dags_q
+  SELECT t.*, c.total_run_dags_eqd, c.total_run_dags_qd, c.total_paused, c.category_counts, c.accelerator_counts, c.category_tests_counts, c.accelerator_tests_counts, q.total_tests, q.total_tests_qe, q.total_tests_q, q.total_runs, q.passed_runs, q.partial_passed_runs, q.total_dags_q
   FROM data_time t, all_dag_count c, cnt_qe q
 ),
 
 cluster_status_time AS (
   SELECT min(load_time) AS cluster_check_time
   FROM `amy_xlml_poc_prod.gke_cluster_info`  
+),
+
+last_one_run_stat AS (
+  SELECT * from `amy_xlml_poc_prod.statistic_last_window` where window_name='the_r_1'
+),
+last_one_run AS (
+  SELECT 
+    (SELECT SUM(total_run_tests) 
+      FROM last_one_run_stat t, UNNEST(t.dag_statistic) s) AS total_run_tests_r1,
+    (SELECT SUM(passed_tests) 
+      FROM last_one_run_stat t, UNNEST(t.dag_statistic) s) AS passed_tests_r1,
+    (SELECT ARRAY_AGG(STRUCT(category, total_run_tests, passed_tests) ORDER BY category)
+     FROM (
+       SELECT s.category,s.total_run_tests,s.passed_tests from last_one_run_stat t, UNNEST(t.dag_category_statistic) s
+     )
+    ) AS category_tests_counts_r1,
+   (SELECT ARRAY_AGG(STRUCT(accelerator, total_run_tests, passed_tests) ORDER BY accelerator)
+     FROM (
+       SELECT s.accelerator,s.total_run_tests,s.passed_tests from last_one_run_stat t, UNNEST(t.dag_accelerator_statistic) s
+     )
+    ) AS accelerator_tests_counts_r1
 ),
     
 cluster_info AS (
@@ -168,7 +217,7 @@ abnormal_counts AS (
     AND t1.cluster_name = t2.cluster_name
     AND t1.region = t2.region
 ),
-    
+
 abnormal_clusters AS (
   SELECT
     ARRAY_AGG(STRUCT(project_name,
@@ -186,26 +235,33 @@ abnormal_clusters AS (
     FROM
       `amy_xlml_poc_prod.cluster_info_view_latest` v
      JOIN  (
-      SELECT project_id,cluster_name ,region
+      SELECT project_id,cluster_name,region
       FROM `amy_xlml_poc_prod.gke_cluster_info`
-        WHERE status != 'RUNNING' ) AS t1
+      WHERE status != 'RUNNING' ) AS t1
     ON t1.project_id = v.project_name AND t1.cluster_name = v.cluster_name AND t1.region = v.region
     WHERE
       v.project_name IS NOT NULL AND v.cluster_name IS NOT NULL
     GROUP BY
-      v.project_name, v.cluster_name, v.region HAVING
-      COUNT(cluster_name) > 1
-      OR COUNT(DISTINCT dag_id) > 1 )
-)
+      v.project_name, v.cluster_name , v.region
+    HAVING
+      cluster_dags>0
+  )
+)  
 
 -- Final global summary table
 SELECT
   t0.data_start,
   t0.data_end,
   t0.total_dags,
+  t0.total_run_dags_eqd + t0.total_run_dags_qd AS total_run_dags,
+  t0.total_run_dags_eqd,
+  t0.total_run_dags_qd,  
   t0.total_dags_q,
+  t0.total_paused,
   t0.category_counts,
   t0.accelerator_counts,
+  t0.category_tests_counts,
+  t0.accelerator_tests_counts,  
   t1.total_cluster_dag,
   t0.total_runs, 
   t0.passed_runs,
@@ -216,21 +272,26 @@ SELECT
   t1.total_cluster_test,
   t1.total_clusters,
   t1.total_projects,
---  t2.abnormal_cluster,
---  t2.abnormal_nodepool,
+  r1.total_run_tests_r1,
+  r1.passed_tests_r1,
+  r1.category_tests_counts_r1,
+  r1.accelerator_tests_counts_r1,
+  t2.abnormal_cluster,
+  t2.abnormal_nodepool,
   t4.cluster_check_time,
   t3.project_cluster_counts,
   t5.cluster_counts,
---  t6.cluster_counts abnormal_cluster_counts
+  t6.cluster_counts abnormal_cluster_counts
 FROM
   dag_sum AS t0,
   cluster_status_time AS t4,
-  cluster_info AS t1
---  abnormal_counts AS t2
+  cluster_info AS t1,
+  last_one_run AS r1,
+  abnormal_counts AS t2
 CROSS JOIN
   prj_cluster AS t3
 CROSS JOIN
   clusters AS t5
---CROSS JOIN
---  abnormal_clusters as t6
+CROSS JOIN
+  abnormal_clusters as t6
 

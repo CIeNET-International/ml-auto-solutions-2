@@ -30,7 +30,7 @@ def get_airflow_logs(dag_id, run_id, test_id, test_start_date, end_with_padding,
         dag_id, run_id, test_id, 
         test_start_date, end_with_padding
     )
-    entries = utils.query_logs(filter_str_error, LOG_PROJECT_ID, 500)
+    entries = utils.query_logs(filter_str_error, LOG_PROJECT_ID, 1000)
     logs_entries = []
     logs_entries_keywords = []
     messages_keywords = set()
@@ -80,7 +80,7 @@ def get_workload_id_from_logs(dag_id, run_id, test_id, test_start_date, end_with
     )
     print(f"query log explorer workload_id")
     pattern = re.compile(r'Returned value was: (\S+)')
-    entries_workload = utils.query_logs(filter_str_workload_id, LOG_PROJECT_ID, 1)
+    entries_workload = utils.query_logs(filter_str_workload_id, LOG_PROJECT_ID, 1000)
     for e in entries_workload:
         payload_str = e.payload if hasattr(e, "payload") else str(e)
         match = pattern.search(payload_str)
@@ -94,7 +94,7 @@ def get_k8s_logs(filter_str_k8s, dag_id, run_id, test_id, cluster_name, cluster_
     """Query and format K8s logs."""
     print(f'qeury k8s logs for workload_id:{workload_id},cluster_name:{cluster_name},project:{cluster_project}')
     #print(f"query log explorer {filter_str_k8s}")
-    entries_k8s = utils.query_logs(filter_str_k8s, cluster_project, 50)
+    entries_k8s = utils.query_logs(filter_str_k8s, cluster_project, 1000)
     # K8s log processing logic as per the original code (mostly print statements)
 
     messages = set()

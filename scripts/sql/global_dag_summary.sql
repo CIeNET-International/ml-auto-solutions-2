@@ -4,9 +4,15 @@ SELECT
   t1.data_start,
   t1.data_end,
   t1.total_dags,
+  t1.total_run_dags,
+  t1.total_run_dags_eqd,
+  t1.total_run_dags_qd,
   t1.total_dags_q,
+  t1.total_paused,
   t1.category_counts,
   t1.accelerator_counts,
+  t1.category_tests_counts,
+  t1.accelerator_tests_counts,  
   t1.total_cluster_dag,
   t1.total_runs, 
   t1.passed_runs,
@@ -14,6 +20,10 @@ SELECT
   t1.total_tests,
   t1.total_tests_qe,
   t1.total_tests_q,
+  t1.total_run_tests_r1,
+  t1.passed_tests_r1,
+  t1.category_tests_counts_r1,
+  t1.accelerator_tests_counts_r1,  
   t1.total_cluster_test,
   t1.total_clusters,
   t1.total_projects,
@@ -22,10 +32,8 @@ SELECT
   t2.cluster_check_time,
   t2.abnormal_cluster_counts,
   t1.project_cluster_counts,
-  t1.cluster_counts
+  t1.cluster_counts  
 FROM 
   `amy_xlml_poc_prod.global_dag_summary_view` t1,
   `amy_xlml_poc_prod.global_cluster_view` t2
-
-
 
