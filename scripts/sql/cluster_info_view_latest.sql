@@ -99,6 +99,10 @@ union_rows AS (
   SELECT * FROM prj_v2
   UNION ALL 
   SELECT * FROM no_prj_v2
+),
+quarantined_info AS (
+  SELECT t.dag_id, t.test_id, t.is_quarantined_dag, t.is_quarantined_test
+  FROM `amy_xlml_poc_prod.quarantine_info_view` v,UNNEST(all_tests_info) t  
 )
 
 SELECT
@@ -112,9 +116,11 @@ SELECT
   r.project_name,
   r.accelerator_type,
   r.accelerator_family,
+  q.is_quarantined_dag,
+  q.is_quarantined_test
 FROM
   union_rows r
-JOIN `amy_xlml_poc_prod.base` AS b
-ON r.dag_id = b.dag_id
+JOIN `amy_xlml_poc_prod.base` AS b ON r.dag_id = b.dag_id
+JOIN quarantined_info AS q ON r.dag_id = q.dag_id AND r.test_id=q.test_id
 
 

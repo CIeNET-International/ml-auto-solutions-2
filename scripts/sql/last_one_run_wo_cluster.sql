@@ -20,7 +20,7 @@ last_run_tests_2 AS (
   tests.test_id, tests.start_date test_start_date, tests.end_date test_end_date
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs_qr) AS runs
-  LEFT JOIN UNNEST (runs.tests) AS tests
+  LEFT JOIN UNNEST (runs.tests_q) AS tests
   WHERE base.dag_id NOT IN (SELECT dag_id FROM dag_with_clusters) 
     AND run_order_desc=1
 ),

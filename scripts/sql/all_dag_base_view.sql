@@ -5,11 +5,12 @@ WITH
 all_dags AS (
   SELECT d.*
   FROM `amy_xlml_poc_prod.dag` d
-  WHERE dag_id IN
-  (SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.serialized_dag`)
-  AND dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
+  WHERE last_parsed_time >= TIMESTAMP(CURRENT_DATE('UTC')) AND
+    dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
+--  WHERE dag_id IN
+--  (SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.serialized_dag`)
+--  AND dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
 ),
-
 
 dag_sch AS (
   SELECT
@@ -143,6 +144,3 @@ SELECT
   LEFT JOIN dag_cleaned_owners dco ON d.dag_id = dco.dag_id
   LEFT JOIN dag_sch ds ON d.dag_id = ds.dag_id
  
-
-
-

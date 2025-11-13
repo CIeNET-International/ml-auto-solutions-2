@@ -135,13 +135,16 @@ last_one_run AS (
      )
     ) AS accelerator_tests_counts_r1
 ),
-    
+
 cluster_info AS (
   SELECT
     COUNT(DISTINCT CONCAT(t1.project_name, t1.cluster_name, t1.region)) AS total_clusters,
     COUNT(DISTINCT t1.project_name) AS total_projects,
-    COUNT(DISTINCT t1.dag_id) AS total_cluster_dag,
+    COUNT(DISTINCT CASE WHEN is_quarantined_test=FALSE THEN t1.dag_id ELSE NULL END) AS total_cluster_dag,
+    COUNT(DISTINCT t1.dag_id) AS total_cluster_dag_iq,
     COUNT(DISTINCT CONCAT(t1.dag_id, t1.test_id)) AS total_cluster_test,
+    COUNT(DISTINCT CASE WHEN is_quarantined_test IS TRUE THEN CONCAT(dag_id, test_id) END) AS total_cluster_test_q,
+    COUNT(DISTINCT CASE WHEN is_quarantined_test IS FALSE THEN CONCAT(dag_id, test_id) END) AS total_cluster_test_eq    
   FROM
     `amy_xlml_poc_prod.cluster_info_view_latest` AS t1 
 ),
@@ -151,13 +154,17 @@ prj_cluster AS (
     ARRAY_AGG(STRUCT(project_name,
         cluster_count,
         cluster_dags,
-        cluster_tests)) AS project_cluster_counts
+        cluster_tests,
+        cluster_tests_q,
+        cluster_tests_eq)) AS project_cluster_counts
   FROM (
     SELECT
       project_name,
       COUNT(DISTINCT cluster_name) AS cluster_count,
       COUNT(DISTINCT dag_id) AS cluster_dags,
       COUNT(DISTINCT CONCAT(dag_id, test_id)) AS cluster_tests,
+      COUNT(DISTINCT CASE WHEN is_quarantined_test IS TRUE THEN CONCAT(dag_id, test_id) END) AS cluster_tests_q,
+      COUNT(DISTINCT CASE WHEN is_quarantined_test IS FALSE THEN CONCAT(dag_id, test_id) END) AS cluster_tests_eq    
     FROM
       `amy_xlml_poc_prod.cluster_info_view_latest`
     WHERE
@@ -172,7 +179,9 @@ clusters AS (
         cluster_name,
         region,
         cluster_dags,
-        cluster_tests)) AS cluster_counts
+        cluster_tests,
+        cluster_tests_q,
+        cluster_tests_eq)) AS cluster_counts
   FROM (
     SELECT
       project_name,
@@ -180,6 +189,8 @@ clusters AS (
       region,
       COUNT(DISTINCT dag_id) AS cluster_dags,
       COUNT(DISTINCT CONCAT(dag_id, test_id)) AS cluster_tests,
+      COUNT(DISTINCT CASE WHEN is_quarantined_test IS TRUE THEN CONCAT(dag_id, test_id) END) AS cluster_tests_q,
+      COUNT(DISTINCT CASE WHEN is_quarantined_test IS FALSE THEN CONCAT(dag_id, test_id) END) AS cluster_tests_eq    
     FROM
       `amy_xlml_poc_prod.cluster_info_view_latest`
     WHERE

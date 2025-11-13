@@ -1,8 +1,8 @@
 CREATE OR REPLACE VIEW `amy_xlml_poc_prod.base_view` AS
 WITH 
 all_dags AS (
-  SELECT * FROM `amy_xlml_poc_prod.all_dag_base_view`
-    WHERE dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
+  SELECT * FROM `amy_xlml_poc_prod.all_dag_base`
+    --WHERE dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
 ),
 
 dag_runs_ended_all AS (
@@ -14,7 +14,7 @@ dag_runs_ended_all AS (
   WHERE dr.start_date is not null and dr.end_date is not null
     --AND start_date BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) AND CURRENT_TIMESTAMP()
    AND DATE(start_date,'UTC') BETWEEN DATE_SUB(CURRENT_DATE('UTC'), INTERVAL 60 DAY) AND DATE_SUB(CURRENT_DATE('UTC'), INTERVAL 1 DAY)
-   AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
+   --AND dr.dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
 ),
     
 dag_scheduled AS (
@@ -48,33 +48,46 @@ last_task_status_pre AS (
 --  JOIN dag_runs_ended AS dr ON ti.dag_id = dr.dag_id AND ti.run_id = dr.run_id
   JOIN dag_runs_ended_all AS dr ON ti.dag_id = dr.dag_id AND ti.run_id = dr.run_id
   LEFT JOIN `amy_xlml_poc_prod.quarantine_view` q ON ti.dag_id=q.dag_id and SPLIT(ti.task_id, '.')[OFFSET(0)] = q.test_id
-),  
+),    
 
 static_test_id as (
+--  SELECT DISTINCT dag_id,test_id FROM (
+--    SELECT dag_id, SPLIT(o.task_id, '.')[OFFSET(0)] test_id,task_id,parents FROM `cienet-cmcs.amy_xlml_poc_prod.dag_task_order` d, UNNEST(d.task_order) o)
   SELECT DISTINCT dag_id,test_id FROM (
-    SELECT dag_id, SPLIT(o.task_id, '.')[OFFSET(0)] test_id,task_id,parents FROM `cienet-cmcs.amy_xlml_poc_prod.dag_task_order` d, UNNEST(d.task_order) o)
+    SELECT dag_id, SPLIT(task_id, '.')[OFFSET(0)] test_id FROM `amy_xlml_poc_prod.dag_tasks` d,UNNEST(d.tasks) AS task_id
+  )  
 ),
 
-last_task_status AS (
+last_task_status_s AS (
   SELECT b.dag_id, b.run_id, b.run_type, b.task_id, b.state, b.rn, b.start_date, b.end_date, b.test_id, b.is_quarantine
   FROM last_task_status_pre b
   JOIN static_test_id s ON b.dag_id=s.dag_id AND b.test_id=s.test_id
 ),
-
-last_task_status_missed AS (  
+last_task_status_ns AS (
   SELECT b.dag_id, b.run_id, b.run_type, b.task_id, b.state, b.rn, b.start_date, b.end_date, b.test_id, b.is_quarantine
   FROM last_task_status_pre b
-  LEFT JOIN static_test_id s ON b.dag_id=s.dag_id AND b.test_id=s.test_id
-  WHERE s.test_id IS NULL
+  WHERE b.dag_id NOT IN (SELECT dag_id FROM static_test_id)
+),
+last_task_status AS (
+  SELECT * FROM last_task_status_s
+  UNION ALL
+  SELECT * FROM last_task_status_ns
 ),
 
-unexist_tests AS (
-  select dag_id,test_id,max(run_id) AS run_id from last_task_status_missed group by dag_id,test_id order by dag_id,test_id
-),
+--last_task_status_missed AS (  
+--  SELECT b.dag_id, b.run_id, b.run_type, b.task_id, b.state, b.rn, b.start_date, b.end_date, b.test_id, b.is_quarantine
+--  FROM last_task_status_pre b
+--  LEFT JOIN static_test_id s ON b.dag_id=s.dag_id AND b.test_id=s.test_id
+--  WHERE s.test_id IS NULL
+--),
 
-unexist_tests_array AS (
-  SELECT dag_id, ARRAY_AGG(STRUCT(test_id, run_id)) AS unexist_tests FROM unexist_tests GROUP BY dag_id
-),
+--unexist_tests_flat AS (
+--  select dag_id,test_id,max(run_id) AS run_id from last_task_status_missed group by dag_id,test_id
+--),
+
+--unexist_tests_array AS (
+--  SELECT dag_id, ARRAY_AGG(STRUCT(test_id, run_id)) AS unexist_tests FROM unexist_tests_flat GROUP BY dag_id
+--),
 
 --tasks quarantine excluded  
 last_task_status_qe AS (
@@ -194,8 +207,18 @@ dag_run_base_pre AS (
     t1.failed_tests,
     t1.total_tasks,
     t1.successful_tasks,
-    CASE WHEN total_tests = successful_tests THEN 1 ELSE 0 END AS is_passed,
-    CASE WHEN successful_tests > 0 AND successful_tests < total_tests THEN 1 ELSE 0 END AS is_partial_passed,
+    CASE
+      WHEN t1.total_tests > 0 AND t1.total_tests = t1.successful_tests THEN 1
+      WHEN t1.total_tests = 0 AND t1.total_tests_q > 0 AND t1.total_tests_q = t1.successful_tests_q THEN 1
+      ELSE 0
+    END AS is_passed,    
+    CASE
+      WHEN t1.total_tests > 0 AND t1.successful_tests > 0 AND t1.successful_tests < t1.total_tests THEN 1
+      WHEN t1.total_tests = 0 AND t1.total_tests_q > 0 AND t1.successful_tests_q > 0 AND t1.successful_tests_q < t1.total_tests_q THEN 1
+      ELSE 0
+    END AS is_partial_passed,    
+    --CASE WHEN total_tests = successful_tests THEN 1 ELSE 0 END AS is_passed,
+    --CASE WHEN successful_tests > 0 AND successful_tests < total_tests THEN 1 ELSE 0 END AS is_partial_passed,
     t1.total_tests_q,
     t1.successful_tests_q,
     t1.failed_tests_q,
@@ -231,7 +254,6 @@ dag_run_base AS (
   FROM dag_run_base_pre t1
   WHERE t1.total_tests > 0  
 ),
-
 
 dag_run_base_all AS (
   SELECT 
@@ -435,7 +457,8 @@ all_run_details AS (
 
 runs_qr AS (
   SELECT *,
-    ROW_NUMBER() OVER (PARTITION BY dag_id ORDER BY start_date DESC) AS run_order_desc
+    ROW_NUMBER() OVER (PARTITION BY dag_id ORDER BY start_date DESC) AS run_order_desc,
+    ROW_NUMBER() OVER (PARTITION BY dag_id, is_passed ORDER BY start_date DESC) AS is_passed_run_order_desc,
   FROM dag_run_base_pre WHERE total_tests = 0 AND total_tests_q > 0 
 ),
 
@@ -461,10 +484,11 @@ all_run_details_qr AS (
         drb.successful_tests_q,
         drb.total_tasks_q,
         drb.successful_tasks_q,
-        drb.run_order_desc
+        drb.run_order_desc,
+        drb.is_passed_run_order_desc
        ) 
     ) AS runs
-  FROM RUNS_QR drb
+  FROM runs_qr drb
   LEFT JOIN test_details_per_run tdpr ON drb.dag_id = tdpr.dag_id AND drb.run_id = tdpr.run_id
   JOIN test_details_per_run_q tdprq ON drb.dag_id = tdprq.dag_id AND drb.run_id = tdprq.run_id
   GROUP BY drb.dag_id
@@ -534,7 +558,6 @@ SELECT
   tlt.test_ids,
   tlt.test_ids_qe,
   tlt.test_ids_q,
-  u.unexist_tests,
   cnt.total_runs,
   cnt.passed_runs,
   cnt.partial_passed_runs,
@@ -564,6 +587,5 @@ LEFT JOIN dag_run_cnt cnt ON d.dag_id = cnt.dag_id
 LEFT JOIN run_type_cnt rtn ON d.dag_id = rtn.dag_id
 LEFT JOIN last_exec le ON d.dag_id = le.dag_id
 LEFT JOIN last_succ ls ON d.dag_id = ls.dag_id
-LEFT JOIN unexist_tests_array u ON d.dag_id = u.dag_id
 ORDER BY d.dag_id
 

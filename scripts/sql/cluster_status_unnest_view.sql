@@ -56,5 +56,5 @@ LEFT JOIN
 LEFT JOIN
     cluster_machine_families cmf ON gci.project_id = cmf.project_id AND gci.cluster_name = cmf.cluster_name AND gci.region = cmf.region
 LEFT JOIN UNNEST(gci.node_pools) AS node_pool
-
+WHERE civ.is_quarantined_test = FALSE
 
