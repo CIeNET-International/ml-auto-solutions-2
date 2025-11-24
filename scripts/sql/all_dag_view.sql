@@ -1,7 +1,7 @@
 CREATE OR REPLACE VIEW `amy_xlml_poc_prod.all_dag_view` AS
 WITH 
 all_dags AS (
-  SELECT * FROM `amy_xlml_poc_prod.all_dag_base_view` 
+  SELECT * FROM `amy_xlml_poc_prod.all_dag_base` 
 ),
 
 all_dag_with_run AS (
@@ -34,6 +34,7 @@ SELECT d.dag_id,
   s.tags, 
   s.category, 
   s.accelerator, 
+  d.tag_accelerator,
   s.dag_owners, 
   s.total_runs_all, s.passed_runs, s.partial_passed_runs, 
   s.total_tests, s.total_tests_qe, s.total_tests_q,

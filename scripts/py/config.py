@@ -15,13 +15,25 @@ GCS_BUCKET_NAME = "amy-xlml-poc-prod"
 
 #PERSIST
 PERSIST_PAIR = {
+    'all_dag_base': {
+        'view_name': 'all_dag_base_view',
+        'table_name': 'all_dag_base'
+    },
     'base': {
         'view_name': 'base_view',
         'table_name': 'base'
     },
+    'statistic_data': {
+        'view_name': 'statistic_data_view',
+        'table_name': 'statistic_data'
+    },
     'statistic': {
         'view_name': 'statistic_last_window_view',
         'table_name': 'statistic_last_window'
+    },
+    'dag_cluster_map': {
+        'view_name': 'dag_cluster_map_view',
+        'table_name': 'dag_cluster_map'
     },
     'run_status': {
         'view_name': 'dag_run_status_base_view',

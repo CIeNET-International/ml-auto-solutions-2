@@ -19,7 +19,8 @@ SELECT
   daily_status_quarantined.status AS status,
   daily_status_quarantined.total_tests AS total_tests,
   daily_status_quarantined.successful_tests AS successful_tests,
-  daily_status_quarantined.failed_tests AS failed_tests
+  daily_status_quarantined.failed_tests AS failed_tests,
+  daily_status_quarantined.total_run_tests AS total_run_tests    
 FROM
   `cienet-cmcs.amy_xlml_poc_prod.dag_run_status_base` b
 JOIN quarantined_dag q ON b.dag_id = q.dag_id

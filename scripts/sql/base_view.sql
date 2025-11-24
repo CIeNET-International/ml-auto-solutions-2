@@ -127,7 +127,7 @@ tasks_test AS (
 ),
 
 --grouping tasks count (total, successful) to test_id
-task_test_status_pre AS (
+task_test_status_pre_1 AS (
   SELECT
     dag_id,
     run_id,
@@ -141,10 +141,40 @@ task_test_status_pre AS (
         THEN 1 ELSE 0 END) AS successful_tasks, 
     MIN(start_date) AS start_date,
     MAX(end_date) AS end_date,
-    ANY_VALUE(is_quarantine) AS is_quarantine
+    ANY_VALUE(is_quarantine) AS is_quarantine,
+    --SUM(CASE WHEN state = 'skipped' THEN 1 ELSE 0 END) AS skipped_count,
+    --ARRAY_AGG(CASE WHEN state = 'skipped' THEN task_id END IGNORE NULLS) AS skipped_task_ids,
+    SUM(CASE WHEN state = 'skipped' AND dag_id NOT IN (
+      SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.config_ignore_skipped_dags`)
+        THEN 1 ELSE 0 END) AS skipped_count,
+    ARRAY_AGG(CASE WHEN state = 'skipped' AND dag_id NOT IN (
+      SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.config_ignore_skipped_dags`)
+        THEN task_id END IGNORE NULLS) AS skipped_task_ids
   FROM tasks_test
   GROUP BY dag_id, run_id, test_id
 ),
+task_test_status_pre AS (
+  SELECT
+    dag_id,
+    run_id,
+    run_type,
+    test_id,
+    total_tasks,
+    successful_tasks + 
+    (CASE WHEN successful_tasks = total_tasks - 1  
+           AND skipped_count = 1                  
+           AND skipped_task_ids[OFFSET(0)] IN (
+             SELECT task_id 
+             FROM `cienet-cmcs.amy_xlml_poc_prod.config_ignore_test_task_xor` AS c
+             WHERE c.dag_id = p.dag_id AND c.test_id = p.test_id
+           )
+      THEN 1 ELSE 0 END) AS successful_tasks, 
+    start_date,
+    end_date,
+    is_quarantine
+  FROM task_test_status_pre_1 p
+),
+
 
 -- calculate test_is_passed by task counts
 task_test_status AS (

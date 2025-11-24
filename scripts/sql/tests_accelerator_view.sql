@@ -55,8 +55,8 @@ accelerator_from_last_n AS (
   SELECT r.*,f.job_name AS test_id,
     f.accelerator AS accelerator_type,
     CASE
-      WHEN REGEXP_CONTAINS(LOWER(f.accelerator), r'(^ct|tpu|v\d+)') THEN 'TPU'      
       WHEN REGEXP_CONTAINS(LOWER(f.accelerator), r'(nvidia|gpu|a100|h100|t4|v100|k80|l4|l40|l40s|p4|p100|h200)') THEN 'GPU'
+      WHEN REGEXP_CONTAINS(LOWER(f.accelerator), r'(^ct|tpu|v\d+)') THEN 'TPU'      
       WHEN REGEXP_CONTAINS(LOWER(f.accelerator), r'^(n[0-9]+|e[0-9]+|c[0-9]+|m[0-9]+|g[0-9]+|a[0-9]+|f1|h3)') THEN 'CPU'      
      ELSE 'TBD'
     END AS accelerator_family

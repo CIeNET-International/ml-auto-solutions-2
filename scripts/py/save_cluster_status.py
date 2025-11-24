@@ -51,8 +51,7 @@ def get_cluster_status(project_id, location, cluster_name):
     node_pools_info = []
     if cluster_mode == "Standard":
       for np in cluster.node_pools:
-        #node_count = sum(ig.instance_count for ig in np.instance_groups) if np.instance_groups else 0
-        node_count = None
+        node_count = get_node_count_via_kubectl(np.name)
         #accelerators_list = [] #comment out, most of nodelpools have no such information
         #accelerator_type = "CPU"
         #if np.config.accelerators:
@@ -106,51 +105,28 @@ def get_cluster_status(project_id, location, cluster_name):
         "node_pools": node_pools_info,
     }
 
-def get_gke_configured_nodepool(project_id: str, region: str, cluster_id: str, nodepool_id: str):
+def get_node_count_via_kubectl(nodepool_name):
     """
-    Get node pool config info from GKE API (desired size, autoscaling range).
+    Connects to the current kubectl context and counts nodes for a nodepool
+    using the cloud.google.com/gke-nodepool label.
     """
-    client_gke = container_v1.ClusterManagerClient()
-    parent = f"projects/{project_id}/locations/{region}/clusters/{cluster_id}/nodePools/{nodepool_id}"
-    nodepool = client_gke.get_node_pool(name=parent)
-
-    configured = {
-        "initial_node_count": nodepool.initial_node_count,
-        "autoscaling": {
-            "enabled": nodepool.autoscaling.enabled if nodepool.autoscaling else False,
-            "min_node_count": nodepool.autoscaling.min_node_count if nodepool.autoscaling else None,
-            "max_node_count": nodepool.autoscaling.max_node_count if nodepool.autoscaling else None,
-        },
-    }
-    return configured
-
-def get_actual_node_count(nodepool_name: str):
-    """
-    Get actual number of nodes currently running in the node pool (from Kubernetes API).
-    """
-    # Load kubeconfig (works locally or in cluster with service account)
     try:
-        config.load_kube_config()  # outside cluster
-    except:
-        config.load_incluster_config()  # inside cluster
+        # Load the configuration from the current ~/.kube/config context
+        # This relies on run_gcloud_get_credentials having been called successfully just before.
+        config.load_kube_config()
+        v1 = client.CoreV1Api()
 
-    v1 = client.CoreV1Api()
-    label_selector = f"cloud.google.com/gke-nodepool={nodepool_name}"
-    nodes = v1.list_node(label_selector=label_selector).items
-    return len(nodes)
+        # Use the known working GKE label selector
+        label_selector = f"cloud.google.com/gke-nodepool={nodepool_name}"
 
-def get_nodepool_summary(project_id, region, cluster_id, nodepool_id):
-    configured = get_gke_configured_nodepool(project_id, region, cluster_id, nodepool_id)
-    actual = get_actual_node_count(nodepool_id)
+        response = v1.list_node(label_selector=label_selector)
 
-    return {
-        "nodepool": nodepool_id,
-        "configured": configured,
-        "actual_running": actual,
-    }
+        return len(response.items)
 
-
-
+    except Exception:
+        # Catches auth issues, connection errors, or API client errors
+        #return "N/A (Connection/Auth Error)"
+        return -1
 
 # --- Step 5: Build BQ schema (Enhanced to include status_message) ---
 def get_bq_schema():

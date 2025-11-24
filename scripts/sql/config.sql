@@ -17,7 +17,50 @@ insert into `cienet-cmcs.amy_xlml_poc_prod.config_ignore_dags` (dag_id) values
     ('tf_dlrm_2_18'),
     ('tf_2_18_supported'),
     ('tf_2_18_se_supported'),
-    ('tf_nightly_supported');
+    ('tf_nightly_supported'),
+    ('maxtext_aqtp_version_sweep_gke_example_dag'),
+    ('new_internal_backill_a3mega'),
+    ('new_internal_backill_a3ultra');
+
+
+CREATE TABLE `cienet-cmcs.amy_xlml_poc_prod.config_ignore_test_task_xor` (
+    dag_id STRING,
+    test_id STRING,
+    task_id STRING
+);
+
+insert into `cienet-cmcs.amy_xlml_poc_prod.config_ignore_test_task_xor` (dag_id,test_id,task_id) values
+    ('maxtext_regular_restore_with_node_disruption','max-reg-res-gcs-node-2xv5p-128','max-reg-res-gcs-node-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist'),
+    ('maxtext_regular_restore_with_node_disruption','max-reg-res-gcs-node-2xv5p-128','max-reg-res-gcs-node-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing'),
+    
+    ('maxtext_emc_orbax_res_local','max-res-loc-emc-2xv5p-128','max-res-loc-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist'),
+    ('maxtext_emc_orbax_res_local','max-res-loc-emc-2xv5p-128','max-res-loc-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing'),
+    
+    ('maxtext_mtc_orbax_res_local','max-res-loc-mtc-2xv5p-128','max-res-loc-mtc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist'),
+    ('maxtext_mtc_orbax_res_local','max-res-loc-mtc-2xv5p-128','max-res-loc-mtc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing'),   
+    
+    ('maxtext_emc_orbax_res_gcs','max-res-gcs-emc-2xv5p-128','max-res-gcs-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist'),
+    ('maxtext_emc_orbax_res_gcs','max-res-gcs-emc-2xv5p-128','max-res-gcs-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing');
+
+
+
+maxtext_emc_orbax_res_local:
+max-res-loc-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist
+max-res-loc-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing
+
+maxtext_mtc_orbax_res_local:
+max-res-loc-mtc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist
+max-res-loc-mtc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing
+
+maxtext_emc_orbax_res_gcs:
+max-res-gcs-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist
+max-res-gcs-emc-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing
+    
+maxtext_regular_restore_with_node_disruption:
+max-reg-res-gcs-node-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.wait_for_file_to_exist
+max-reg-res-gcs-node-2xv5p-128.run_model.launch_workload_with_node_reach_to_step.do_nothing
+
+
 
 
 
@@ -28,7 +71,7 @@ CREATE TABLE `cienet-cmcs.amy_xlml_poc_prod.config_window` (
 
 insert into `cienet-cmcs.amy_xlml_poc_prod.config_window` (type, value) values 
     ('d', 1),('d', 3),('d', 7),('d',30),('d',60),
-    ('r', 1),('r', 2),('r', 3),('r', 4),('r', 5),('r', 6),('r', 7),
+    ('r', 1),('r', 2),('r', 3),('r', 4),('r', 5),('r', 6),('r', 7),('r',14),
     ('the_r', 1),('the_r', 2),('the_r', 3),('the_r', 4),('the_r', 5),('the_r', 6),('the_r', 7),('the_r', 8),('the_r', 9),('the_r', 10),
     ('the_r', 11),('the_r', 12),('the_r', 13),('the_r', 14),('the_r', 15),('the_r', 16),('the_r', 17),('the_r', 18),('the_r', 19),('the_r', 20),
     ('the_r', 21),('the_r', 22),('the_r', 23),('the_r', 24),('the_r', 25),('the_r', 26),('the_r', 27),('the_r', 28),('the_r', 29),('the_r', 30),
@@ -95,7 +138,8 @@ insert into `cienet-cmcs.amy_xlml_poc_prod.config_ignore_skipped_dags` (dag_id) 
 ('validate_interruption_count_gce_eviction'),
 ('validate_interruption_count_gke_hwsw_maintenance'),
 ('validate_interruption_count_gke_eviction'),
-('validate_interruption_count_gce_other');
+('validate_interruption_count_gce_other'),
+('maxtext_mtc_orbax_res_local');
 
 
 ---------------------------------------

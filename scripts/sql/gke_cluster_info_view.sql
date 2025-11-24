@@ -62,6 +62,7 @@ aggr_dag AS (
     t2.cluster_name,
     t2.region,
     COUNT(DISTINCT t2.dag_id) AS num_runs,
+    ARRAY_AGG(DISTINCT t2.category IGNORE NULLS) AS categories,
     ARRAY_AGG(
       STRUCT(
         t2.dag_id,
@@ -83,6 +84,7 @@ aggr_1 AS (
         c.category, c.num_runs, c.num_tests
       )
     ) AS tests_by_category,
+    ARRAY_AGG(DISTINCT c.category IGNORE NULLS) AS categories,
     ARRAY_AGG(
       STRUCT(
         a.accelerator, a.num_runs, a.num_tests
@@ -95,6 +97,8 @@ aggr_1 AS (
 ),
 aggr_2 AS (
   SELECT d.project_name, d.cluster_name, d.region, ANY_VALUE(d.num_runs) num_runs, ANY_VALUE(d.dags_in_use) dags_in_use, 
+    ARRAY_AGG(DISTINCT c.category IGNORE NULLS) AS categories,
+    ARRAY_AGG(DISTINCT a.accelerator IGNORE NULLS) AS accelerators,
     ARRAY_AGG(
       STRUCT(
         c.category, c.num_runs
@@ -120,6 +124,9 @@ cluster_machine_families AS (
   FROM
     `amy_xlml_poc_prod.gke_cluster_info`,
     UNNEST(node_pools) AS np
+  WHERE
+    np.machine_family IS NOT NULL 
+    AND np.machine_family != 'CPU'       
   GROUP BY
     project_id,
     cluster_name,
@@ -131,13 +138,17 @@ SELECT
     t1.project_id,
     t1.region,
     t1.cluster_mode,
-    t2.machine_families,
+    --COALESCE(t2.machine_families, ['CPU']) AS machine_families,
+    CASE
+      WHEN (machine_families IS NULL OR ARRAY_LENGTH(machine_families) = 0) AND t1.status != 'NOT EXIST' AND cluster_mode != 'Autopilot' THEN ['CPU']
+      ELSE t2.machine_families
+    END AS machine_families,
     t1.status,
     t1.status_message,
     t1.load_time,
     t1.node_pools,
     t3.num_runs, t3.num_tests, t3.tests_in_use, t3.tests_by_category, t3.tests_by_accelerator,
-    t4.dags_in_use, t4.dags_by_category, t4.dags_by_accelerator
+    t4.dags_in_use, t4.dags_by_category, t4.dags_by_accelerator, t4.categories, t4.accelerators
 FROM
     `cienet-cmcs.amy_xlml_poc_prod.gke_cluster_info` AS t1
 LEFT JOIN cluster_machine_families AS t2 ON

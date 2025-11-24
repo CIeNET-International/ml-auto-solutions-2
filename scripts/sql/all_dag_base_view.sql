@@ -73,7 +73,7 @@ category_matches AS (
     UNNEST(d.tags) AS tag1,
     UNNEST(c.tag_names) AS tag2
   WHERE
-    tag1 = tag2
+    lower(tag1) = lower(tag2)
 ),
 
 -- Create a list of all dag_id and accelerator matches
@@ -90,7 +90,7 @@ accel_matches AS (
     UNNEST(d.tags) AS tag1,
     UNNEST(c.tag_names) AS tag2
   WHERE
-    tag1 = tag2
+    lower(tag1) = lower(tag2)
 ),
 accelerator_categorization AS (
   WITH all_accelerators AS (
@@ -134,12 +134,16 @@ SELECT
     b.tags,
     dco.cleaned_owners AS dag_owners, 
     p.category,
-    a.accelerator,
+    --a.accelerator,
+    --m.accelerator AS tag_accelerator,
+    a.accelerator AS tag_accelerator,
+    m.accelerator,
     d.description
   FROM all_dags d
   LEFT JOIN category_matches p ON d.dag_id = p.dag_id AND p.rn = 1
   --LEFT JOIN accel_matches a ON d.dag_id = a.dag_id AND a.rn = 1
-  LEFT JOIN accelerator_categorization  a ON d.dag_id = a.dag_id 
+  LEFT JOIN accelerator_categorization a ON d.dag_id = a.dag_id 
+  LEFT JOIN accel_matches m ON d.dag_id = m.dag_id AND m.rn = 1
   LEFT JOIN dag_with_tag b ON d.dag_id=b.dag_id
   LEFT JOIN dag_cleaned_owners dco ON d.dag_id = dco.dag_id
   LEFT JOIN dag_sch ds ON d.dag_id = ds.dag_id

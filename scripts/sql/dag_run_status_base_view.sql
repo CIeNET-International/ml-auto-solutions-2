@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_prod.dag_run_status_base` AS
+CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_prod.dag_run_status_base_view` AS
 WITH
 full_dag_runs_stat AS (
   SELECT base.category, base.accelerator, base.dag_owners dag_owner, base.tags, base.formatted_schedule, base.is_paused, base.dag_id, base.total_runs, 
@@ -7,7 +7,7 @@ full_dag_runs_stat AS (
     CASE WHEN base.total_tests = base.total_tests_q THEN TRUE ELSE FALSE END AS is_quarantined_dag,    
     'type_stat' AS data_type, 
     runs.run_id, runs.execution_date, DATE(runs.start_date) AS run_date, runs.start_date, runs.end_date, runs.is_passed, runs.is_partial_passed,
-    runs.total_tests, runs.successful_tests
+    runs.total_tests, runs.successful_tests, runs.total_tests + runs.total_tests_q AS total_run_tests
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs) AS runs
 ),
@@ -18,7 +18,7 @@ full_dag_runs_scheduled AS (
     CASE WHEN base.total_tests = base.total_tests_q THEN TRUE ELSE FALSE END AS is_quarantined_dag,    
     'type_scheduled' AS data_type,
     runs.run_id, runs.execution_date, DATE(runs.start_date) AS run_date, runs.start_date, runs.end_date, runs.is_passed, runs.is_partial_passed,
-    runs.total_tests, runs.successful_tests
+    runs.total_tests, runs.successful_tests, runs.total_tests + runs.total_tests_q AS total_run_tests
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs_scheduled) AS runs
 ),
@@ -29,7 +29,7 @@ full_dag_runs_manual AS (
     CASE WHEN base.total_tests = base.total_tests_q THEN TRUE ELSE FALSE END AS is_quarantined_dag,    
     'type_manual' AS data_type,
     runs.run_id, runs.execution_date, DATE(runs.start_date) AS run_date, runs.start_date, runs.end_date, runs.is_passed, runs.is_partial_passed,
-    runs.total_tests, runs.successful_tests
+    runs.total_tests, runs.successful_tests, runs.total_tests + runs.total_tests_q AS total_run_tests
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs_manual) AS runs
 ),
@@ -40,7 +40,7 @@ full_dag_runs_qr AS (
     CASE WHEN base.total_tests = base.total_tests_q THEN TRUE ELSE FALSE END AS is_quarantined_dag,    
     'type_quarantined' AS data_type,
     runs.run_id, runs.execution_date, DATE(runs.start_date) AS run_date, runs.start_date, runs.end_date, runs.is_passed, runs.is_partial_passed,
-    runs.total_tests_q AS total_tests, runs.successful_tests_q AS successful_tests
+    runs.total_tests_q AS total_tests, runs.successful_tests_q AS successful_tests, runs.total_tests + runs.total_tests_q AS total_run_tests
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs_qr) AS runs
 ),
@@ -51,7 +51,7 @@ full_dag_runs_qt AS (
     CASE WHEN base.total_tests = base.total_tests_q THEN TRUE ELSE FALSE END AS is_quarantined_dag,    
     'type_quarantined' AS data_type,
     runs.run_id, runs.execution_date, DATE(runs.start_date) AS run_date, runs.start_date, runs.end_date, runs.is_passed, runs.is_partial_passed,
-    runs.total_tests_q AS total_tests, runs.successful_tests_q AS successful_tests
+    runs.total_tests_q AS total_tests, runs.successful_tests_q AS successful_tests, runs.total_tests + runs.total_tests_q AS total_run_tests
   FROM `cienet-cmcs.amy_xlml_poc_prod.base` base
   LEFT JOIN UNNEST (base.runs) AS runs
   WHERE runs.total_tests_q > 0
@@ -89,6 +89,7 @@ daily_dag_status AS (
       ELSE 'success'
     END AS status,
     ANY_VALUE(fdr.base_total_tests) AS total_tests_all,
+    SUM(fdr.total_run_tests) AS total_run_tests,
     ANY_VALUE(is_quarantined) AS is_quarantined,
     ANY_VALUE(is_quarantined_dag) AS is_quarantined_dag,
     SUM(fdr.total_tests) AS total_tests,
@@ -109,24 +110,28 @@ pivoted_daily_status AS (
     -- Pivot the 'type_stat' metrics for the original daily_status
     ANY_VALUE(CASE WHEN data_type = 'type_stat' THEN status END) AS status_stat,
     ANY_VALUE(CASE WHEN data_type = 'type_stat' THEN total_tests END) AS total_tests_stat,
+    ANY_VALUE(CASE WHEN data_type = 'type_stat' THEN total_run_tests END) AS total_run_tests_stat,
     ANY_VALUE(CASE WHEN data_type = 'type_stat' THEN successful_tests END) AS successful_tests_stat,
     ANY_VALUE(CASE WHEN data_type = 'type_stat' THEN failed_tests END) AS failed_tests_stat,
     
     -- Pivot the 'type_scheduled' metrics
     ANY_VALUE(CASE WHEN data_type = 'type_scheduled' THEN status END) AS status_scheduled,
     ANY_VALUE(CASE WHEN data_type = 'type_scheduled' THEN total_tests END) AS total_tests_scheduled,
+    ANY_VALUE(CASE WHEN data_type = 'type_scheduled' THEN total_run_tests END) AS total_run_tests_scheduled,
     ANY_VALUE(CASE WHEN data_type = 'type_scheduled' THEN successful_tests END) AS successful_tests_scheduled,
     ANY_VALUE(CASE WHEN data_type = 'type_scheduled' THEN failed_tests END) AS failed_tests_scheduled,
     
     -- Pivot the 'type_manual' metrics
     ANY_VALUE(CASE WHEN data_type = 'type_manual' THEN status END) AS status_manual,
     ANY_VALUE(CASE WHEN data_type = 'type_manual' THEN total_tests END) AS total_tests_manual,
+    ANY_VALUE(CASE WHEN data_type = 'type_manual' THEN total_run_tests END) AS total_run_tests_manual,
     ANY_VALUE(CASE WHEN data_type = 'type_manual' THEN successful_tests END) AS successful_tests_manual,
     ANY_VALUE(CASE WHEN data_type = 'type_manual' THEN failed_tests END) AS failed_tests_manual,
 
     -- Pivot the 'type_quarantined' metrics
     ANY_VALUE(CASE WHEN data_type = 'type_quarantined' THEN status END) AS status_quarantined,
     ANY_VALUE(CASE WHEN data_type = 'type_quarantined' THEN total_tests END) AS total_tests_quarantined,
+    ANY_VALUE(CASE WHEN data_type = 'type_quarantined' THEN total_run_tests END) AS total_run_tests_quarantined,
     ANY_VALUE(CASE WHEN data_type = 'type_quarantined' THEN successful_tests END) AS successful_tests_quarantined,
     ANY_VALUE(CASE WHEN data_type = 'type_quarantined' THEN failed_tests END) AS failed_tests_quarantined
 
@@ -152,7 +157,7 @@ distinct_dag_details AS (
 min_max_dates AS (
   SELECT
     MIN(run_date) AS min_date,
-    MAX(run_date) AS max_date
+    MAX(run_date) AS max_date,
   FROM
     full_dag_runs
 ),
@@ -184,24 +189,28 @@ SELECT
   STRUCT(
     COALESCE(pds.status_stat, 'no run') AS status,
     pds.total_tests_stat AS total_tests,
+    pds.total_run_tests_stat AS total_run_tests,
     pds.successful_tests_stat AS successful_tests,
     pds.failed_tests_stat AS failed_tests
   ) AS daily_status,
   STRUCT(
     COALESCE(pds.status_scheduled, 'no run') AS status,
     pds.total_tests_scheduled AS total_tests,
+    pds.total_run_tests_scheduled AS total_run_tests,
     pds.successful_tests_scheduled AS successful_tests,
     pds.failed_tests_scheduled AS failed_tests
   ) AS daily_status_scheduled,
   STRUCT(
     COALESCE(pds.status_manual, 'no run') AS status,
     pds.total_tests_manual AS total_tests,
+    pds.total_run_tests_manual AS total_run_tests,
     pds.successful_tests_manual AS successful_tests,
     pds.failed_tests_manual AS failed_tests
   ) AS daily_status_manual,
   STRUCT(
     COALESCE(pds.status_quarantined, 'no run') AS status,
     pds.total_tests_quarantined AS total_tests,
+    pds.total_run_tests_quarantined AS total_run_tests,
     pds.successful_tests_quarantined AS successful_tests,
     pds.failed_tests_quarantined AS failed_tests
   ) AS daily_status_quarantined,      
