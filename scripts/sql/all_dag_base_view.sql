@@ -130,18 +130,18 @@ SELECT
     d.dag_id,
     d.is_paused,
     d.schedule_interval,
-    ds.formatted_schedule,
+    REGEXP_REPLACE(ds.formatted_schedule, r'^"|"$', '') AS formatted_schedule,
     b.tags,
     dco.cleaned_owners AS dag_owners, 
     p.category,
-    --a.accelerator,
-    --m.accelerator AS tag_accelerator,
-    a.accelerator AS tag_accelerator,
-    m.accelerator,
+    a.accelerator AS aggr_accelerator,
+    m.accelerator AS tag_accelerator,
+    m.accelerator AS accelerator,
+    --a.accelerator AS tag_accelerator,
+    --m.accelerator,
     d.description
   FROM all_dags d
   LEFT JOIN category_matches p ON d.dag_id = p.dag_id AND p.rn = 1
-  --LEFT JOIN accel_matches a ON d.dag_id = a.dag_id AND a.rn = 1
   LEFT JOIN accelerator_categorization a ON d.dag_id = a.dag_id 
   LEFT JOIN accel_matches m ON d.dag_id = m.dag_id AND m.rn = 1
   LEFT JOIN dag_with_tag b ON d.dag_id=b.dag_id

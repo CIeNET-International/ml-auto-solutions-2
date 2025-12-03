@@ -189,9 +189,10 @@ task_test_status AS (
     p.start_date,
     p.end_date,
     p.is_quarantine,
-    COALESCE(ta.accelerator_family,ab.accelerator) AS accelerator    
+    --COALESCE(ta.accelerator_family,ab.accelerator) AS accelerator    
+    ab.accelerator AS accelerator
   FROM task_test_status_pre p
-  LEFT JOIN `amy_xlml_poc_prod.tests_accelerator_view` ta ON p.dag_id = ta.dag_id AND p.test_id = ta.test_id
+  --LEFT JOIN `amy_xlml_poc_prod.tests_accelerator_view` ta ON p.dag_id = ta.dag_id AND p.test_id = ta.test_id
   LEFT JOIN all_dags AS ab ON p.dag_id = ab.dag_id  
 ),
 

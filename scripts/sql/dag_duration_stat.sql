@@ -12,6 +12,8 @@ SELECT
   any_run_count,
   avg_duration_success_seconds,
   max_duration_success_seconds,
+  avg_duration_failed_seconds,
+  max_duration_failed_seconds,
   avg_duration_any_seconds,
   max_duration_any_seconds,
   last_success_execution_date_tasks,

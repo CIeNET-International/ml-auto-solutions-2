@@ -7,7 +7,6 @@ day0 AS (
     TIMESTAMP_ADD(TIMESTAMP_TRUNC(CURRENT_TIMESTAMP(), DAY, "UTC"), INTERVAL 7 DAY) AS sim_day7
 ),
 
-
 dag_sch AS (
   SELECT
     dag_id,
@@ -29,7 +28,7 @@ dag_sch AS (
     END AS formatted_schedule
   FROM
     `amy_xlml_poc_prod.dag` 
-  WHERE schedule_interval IS NOT NULL
+  WHERE schedule_interval IS NOT NULL AND schedule_interval != ''
     AND LOWER(schedule_interval) != 'null'
     AND is_paused = FALSE
 ),
@@ -42,14 +41,20 @@ profiles AS (
     p.region,
     p.dag_id,
     p.test_id,
+    p.is_quarantined_dag,
+    p.is_quarantined_test,
     p.start_offset_seconds,
     COALESCE(p.avg_successful_test_duration_seconds, p.avg_any_test_duration_seconds) AS test_duration_seconds,
     g.schedule_interval,
-    COALESCE(ds.avg_duration_success_seconds, ds.avg_duration_any_seconds) AS dag_duration_seconds
+    COALESCE(ds.avg_duration_success_seconds, ds.avg_duration_any_seconds) AS dag_duration_seconds,
+    CASE
+      WHEN ds.avg_duration_success_seconds IS NOT NULL THEN 'avg_succ'
+      ELSE 'avg_all'
+    END AS duration_type    
   FROM `amy_xlml_poc_prod.dag_execution_profile_with_cluster` p
   JOIN dag_sch g
     ON p.dag_id = g.dag_id
-  JOIN `amy_xlml_poc_prod.dag_duration_stat` ds
+  JOIN `amy_xlml_poc_prod.dag_duration_stat_iq` ds
     ON p.dag_id = ds.dag_id
   WHERE p.cluster_name IS NOT NULL
     AND TRIM(p.cluster_name) != ''  -- skip unmapped tests
@@ -220,6 +225,9 @@ timed AS (
     cluster_name, cluster_project, region,
     dag_id,
     test_id,
+    is_quarantined_dag,
+    is_quarantined_test,    
+    duration_type,
     dag_run_start AS dag_sim_start,
     TIMESTAMP_ADD(
       dag_run_start,
@@ -246,10 +254,13 @@ SELECT
   d.schedule_interval,
   d.formatted_schedule,  
   t.test_id,
+  t.is_quarantined_dag,
+  t.is_quarantined_test,
   t.dag_sim_start,
   t.dag_sim_end,
   t.test_sim_start_time,
   t.test_sim_end_time,
+  t.duration_type,
   (
     SELECT COUNT(1)
     FROM timed s

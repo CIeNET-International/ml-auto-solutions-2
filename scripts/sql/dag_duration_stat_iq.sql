@@ -17,12 +17,26 @@ all_runs AS (
   SELECT dag_id, run_id, execution_date, start_date, end_date, is_passed, run_order_desc, is_passed_run_order_desc, is_quarantined_dag FROM all_runs_qr
 ), 
 
-succ_runs AS (
-  SELECT dag_id, run_id, execution_date, start_date, end_date, is_passed, run_order_desc, is_passed_run_order_desc, is_quarantined_dag 
+all_runs_duration AS (
+  SELECT
+    dag_id,
+    run_id,
+    is_passed,
+    TIMESTAMP_DIFF(MAX(end_date), MIN(start_date), SECOND) AS wall_clock_duration_seconds
   FROM all_runs
-  WHERE is_passed=1
-), 
+  GROUP BY dag_id, run_id, is_passed
+),
 
+--succ_runs AS (
+--  SELECT dag_id, run_id, execution_date, start_date, end_date, is_passed, run_order_desc, is_passed_run_order_desc, is_quarantined_dag 
+--  FROM all_runs
+--  WHERE is_passed=1
+--), 
+--failed_runs AS (
+--  SELECT dag_id, run_id, execution_date, start_date, end_date, is_passed, run_order_desc, is_passed_run_order_desc, is_quarantined_dag 
+--  FROM all_runs
+--  WHERE is_passed=0
+--), 
 all_tests_pre AS (
   SELECT base.dag_id, runs.run_id,runs.execution_date, runs.start_date, runs.end_date, runs.is_passed, runs.run_order_desc, runs.is_passed_run_order_desc, FALSE AS is_quarantined_dag,
     tests.start_date test_start_date, tests.end_date test_end_date, FALSE AS is_quarantined_test
@@ -95,28 +109,34 @@ dag_run_success AS (
   SELECT
     la.dag_id,
     la.run_id,
-    TIMESTAMP_DIFF(MAX(la.end_date), MIN(la.start_date), MICROSECOND) / 1000000.0 AS wall_clock_duration_seconds
-  FROM succ_runs la
-  GROUP BY la.dag_id, la.run_id
+    wall_clock_duration_seconds
+  FROM all_runs_duration la
+  WHERE is_passed=1
 ),
--- Wall clock durations for any runs (regardless of success)
+dag_run_failed AS (
+  SELECT
+    la.dag_id,
+    la.run_id,
+    wall_clock_duration_seconds
+  FROM all_runs_duration la
+  WHERE is_passed=0
+),
+dag_run_any AS (
+  SELECT
+    dag_id,
+    run_id,
+    wall_clock_duration_seconds
+  FROM all_runs_duration la
+),
+
 --dag_run_any AS (
 --  SELECT
 --    dag_id,
 --    run_id,
 --    TIMESTAMP_DIFF(MAX(end_date), MIN(start_date), SECOND) AS wall_clock_duration_seconds
---  FROM all_runs
+--  FROM task_attempts
 --  GROUP BY dag_id, run_id
 --),
-
-dag_run_any AS (
-  SELECT
-    dag_id,
-    run_id,
-    TIMESTAMP_DIFF(MAX(end_date), MIN(start_date), SECOND) AS wall_clock_duration_seconds
-  FROM task_attempts
-  GROUP BY dag_id, run_id
-),
 
 -- Per-DAG aggregated stats
 dag_stats AS (
@@ -126,11 +146,15 @@ dag_stats AS (
     COUNT(DISTINCT a.run_id) AS any_run_count,
     AVG(s.wall_clock_duration_seconds) AS avg_duration_success_seconds,
     MAX(s.wall_clock_duration_seconds) AS max_duration_success_seconds,
+    AVG(f.wall_clock_duration_seconds) AS avg_duration_failed_seconds,
+    MAX(f.wall_clock_duration_seconds) AS max_duration_failed_seconds,
     AVG(a.wall_clock_duration_seconds) AS avg_duration_any_seconds,
     MAX(a.wall_clock_duration_seconds) AS max_duration_any_seconds
   FROM dag_run_any a
   LEFT JOIN dag_run_success s
     ON a.dag_id = s.dag_id AND a.run_id = s.run_id
+  LEFT JOIN dag_run_failed f
+    ON a.dag_id = f.dag_id AND a.run_id = f.run_id
   GROUP BY a.dag_id
 ),
 
@@ -158,8 +182,8 @@ last_success_run_dagrun AS (
     FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', start_date) AS last_success_start_date_dagrun,
     FORMAT_TIMESTAMP('%Y-%m-%d %H:%M:%S UTC', end_date) AS last_success_end_date_dagrun,
     TIMESTAMP_DIFF(end_date, start_date, MICROSECOND) / 1000000.0 AS last_success_duration_seconds_dagrun
-  FROM succ_runs
-  WHERE is_passed_run_order_desc=1
+  FROM all_runs
+  WHERE is_passed=1 AND is_passed_run_order_desc=1
 ),
 dag_is_qr AS (
   SELECT dag_id, ANY_VALUE(is_quarantined_dag) AS is_quarantined_dag
@@ -177,6 +201,8 @@ SELECT
   ds.any_run_count,
   round(ds.avg_duration_success_seconds, 0) AS avg_duration_success_seconds,
   round(ds.max_duration_success_seconds, 0) AS max_duration_success_seconds,
+  round(ds.avg_duration_failed_seconds, 0) AS avg_duration_failed_seconds,
+  round(ds.max_duration_failed_seconds, 0) AS max_duration_failed_seconds,
   round(ds.avg_duration_any_seconds, 0) AS avg_duration_any_seconds,
   round(ds.max_duration_any_seconds, 0) AS max_duration_any_seconds,
   lsrt.last_success_execution_date_tasks,

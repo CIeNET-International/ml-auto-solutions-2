@@ -11,7 +11,7 @@ all_dag_with_run AS (
     last_exec, last_succ
   FROM `cienet-cmcs.amy_xlml_poc_prod.base`
 ),
-statistic AS (
+statistic_d AS (
   SELECT
     w.window_value,
     s.dag_id,
@@ -24,6 +24,25 @@ statistic AS (
     `amy_xlml_poc_prod.statistic_last_window` as w,
     UNNEST(w.dag_statistic) as s 
   WHERE window_name like 'last_%d'
+),
+statistic_r AS (
+  SELECT
+    w.window_value,
+    s.dag_id,
+    s.total_runs,
+    s.passed_runs,
+    s.partial_passed_runs,
+    s.runs_pass_rate,
+    s.runs_partial_pass_rate
+  FROM 
+    `amy_xlml_poc_prod.statistic_last_window` as w,
+    UNNEST(w.dag_statistic) as s 
+  WHERE window_name like 'last_%r'
+),
+cluster_map AS (
+  SELECT dag_id,ARRAY_AGG(c.cluster_name IGNORE NULLS) AS clusters
+  FROM `amy_xlml_poc_prod.dag_cluster_map` d, UNNEST (d.clusters) AS c
+  GROUP BY dag_id
 )
 
 SELECT d.dag_id, 
@@ -64,13 +83,21 @@ SELECT d.dag_id,
   s7.passed_runs passed_runs_7,
   s7.partial_passed_runs partial_passed_runs_7,
   s7.runs_pass_rate runs_pass_rate_7,
-  s7.runs_partial_pass_rate runs_partial_pass_rate_7  
+  s7.runs_partial_pass_rate runs_partial_pass_rate_7,
+  r3.total_runs total_runs_3r,
+  r3.passed_runs passed_runs_3r,
+  r3.partial_passed_runs partial_passed_runs_3r,
+  r3.runs_pass_rate runs_pass_rate_3r,
+  r3.runs_partial_pass_rate runs_partial_pass_rate_3r,  
+  dcm.clusters  
 FROM all_dags d
 LEFT JOIN all_dag_with_run s ON d.dag_id = s.dag_id
-LEFT JOIN statistic s1 ON d.dag_id = s1.dag_id AND s1.window_value = 1
-LEFT JOIN statistic s3 ON d.dag_id = s3.dag_id AND s3.window_value = 3
-LEFT JOIN statistic s7 ON d.dag_id = s7.dag_id AND s7.window_value = 7
-LEFT JOIN statistic s30 ON d.dag_id = s30.dag_id AND s30.window_value = 30
-LEFT JOIN statistic s60 ON d.dag_id = s60.dag_id AND s60.window_value = 60
+LEFT JOIN statistic_d s1 ON d.dag_id = s1.dag_id AND s1.window_value = 1
+LEFT JOIN statistic_d s3 ON d.dag_id = s3.dag_id AND s3.window_value = 3
+LEFT JOIN statistic_d s7 ON d.dag_id = s7.dag_id AND s7.window_value = 7
+LEFT JOIN statistic_d s30 ON d.dag_id = s30.dag_id AND s30.window_value = 30
+LEFT JOIN statistic_d s60 ON d.dag_id = s60.dag_id AND s60.window_value = 60
+LEFT JOIN statistic_r r3 ON d.dag_id = r3.dag_id AND r3.window_value = 3
+LEFT JOIN cluster_map dcm ON d.dag_id = dcm.dag_id 
 
 

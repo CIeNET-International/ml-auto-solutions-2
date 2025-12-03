@@ -1,33 +1,30 @@
 CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_forward_schedule_dag_level` AS
 WITH dag_agg AS (
   SELECT
-    cluster_name, project_name, region, dag_id,
+    cluster_name, project_name, region,
+    dag_id,
+    formatted_schedule,
     DATE(test_sim_start_time) AS sim_date,
-    ANY_VALUE(is_quarantined_dag) AS is_quarantined_dag,
-    ANY_VALUE(formatted_schedule) AS formatted_schedule,
-    ANY_VALUE(duration_type) AS duration_type, 
     MIN(test_sim_start_time) AS cluster_sim_start,
-    MAX(test_sim_end_time) AS cluster_sim_end,
+    MAX(test_sim_end_time)   AS cluster_sim_end,
     COUNT(*) AS cluster_tests,
     ARRAY_AGG(
       STRUCT(
         test_id,
-        is_quarantined_test,
         test_sim_start_time,
         test_sim_end_time
       )
       ORDER BY test_sim_start_time
     ) AS test_details
   FROM `amy_xlml_poc_prod.dashboard_dag_forward_schedule_simulation`
-  GROUP BY cluster_name, project_name, region, dag_id, sim_date
+  GROUP BY cluster_name, project_name, region, dag_id, formatted_schedule, sim_date
 ),
 concurrency AS (
   SELECT
-    t.cluster_name, t.project_name, t.region, t.dag_id, 
+    t.cluster_name, t.project_name, t.region,
+    t.dag_id,
+    t.formatted_schedule,
     DATE(t.test_sim_start_time) AS sim_date,
-    ANY_VALUE(is_quarantined_dag) AS is_quarantined_dag,
-    ANY_VALUE(t.formatted_schedule) AS formatted_schedule,
-    ANY_VALUE(duration_type) AS duration_type, 
     MAX((
       SELECT COUNT(1)
       FROM `amy_xlml_poc_prod.dashboard_dag_forward_schedule_simulation` s
@@ -41,37 +38,39 @@ concurrency AS (
         AND s.test_sim_end_time   > t.test_sim_start_time
     )) AS max_concurrent_tests
   FROM `amy_xlml_poc_prod.dashboard_dag_forward_schedule_simulation` t
-  GROUP BY t.cluster_name, t.project_name, t.region, t.dag_id, sim_date
+  GROUP BY t.cluster_name, t.project_name, t.region, t.dag_id, t.formatted_schedule, sim_date
 )
-
 SELECT
   a.cluster_name, a.project_name, a.region,
-  a.dag_id, ANY_VALUE(a.is_quarantined_dag) AS is_quarantined_dag,
-  ANY_VALUE(a.formatted_schedule) AS formatted_schedule,
-  ANY_VALUE(a.duration_type) AS duration_type,
+  a.dag_id,
+  a.formatted_schedule,
   a.sim_date,
   -- keep original dag_sim_start/dag_sim_end (representative daily values)
   ANY_VALUE(t.dag_sim_start) AS dag_sim_start,
-  ANY_VALUE(t.dag_sim_end) AS dag_sim_end,
+  ANY_VALUE(t.dag_sim_end)   AS dag_sim_end,
   -- aggregated daily bounds
-  ANY_VALUE(a.cluster_sim_start) AS cluster_sim_start,
-  ANY_VALUE(a.cluster_sim_end) AS cluster_sim_end,
-  ANY_VALUE(a.cluster_tests) AS cluster_tests,
-  ANY_VALUE(a.test_details) AS test_details,
-  ANY_VALUE(c.max_concurrent_tests) AS max_concurrent_tests
+  a.cluster_sim_start,
+  a.cluster_sim_end,
+  a.cluster_tests,
+  a.test_details,
+  c.max_concurrent_tests
 FROM dag_agg a
 JOIN concurrency c
   ON a.cluster_name = c.cluster_name AND a.project_name = c.project_name AND a.region = c.region
-    AND a.dag_id = c.dag_id AND a.sim_date = c.sim_date
+ AND a.dag_id = c.dag_id
+ AND a.formatted_schedule = c.formatted_schedule
+ AND a.sim_date = c.sim_date
 JOIN `amy_xlml_poc_prod.dashboard_dag_forward_schedule_simulation` t
   ON a.cluster_name = t.cluster_name AND a.project_name = t.project_name AND a.region = t.region
-    AND t.dag_id = a.dag_id
-    AND DATE(t.test_sim_start_time) = a.sim_date
+ AND t.dag_id = a.dag_id
+ AND t.formatted_schedule = a.formatted_schedule
+ AND DATE(t.test_sim_start_time) = a.sim_date
 GROUP BY
   a.cluster_name,
   a.project_name,
   a.region,
   a.dag_id,
+  a.formatted_schedule,
   a.sim_date,
   a.cluster_sim_start,
   a.cluster_sim_end,

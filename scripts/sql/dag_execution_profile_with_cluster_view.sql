@@ -8,10 +8,10 @@ WITH qualifying_dags AS (
 -- Choose reference run: last successful if present, else most recent run
 last_runs AS (
   SELECT
-    d.dag_id,
+    d.dag_id, d.is_quarantined_dag,
     COALESCE(d.last_success_run_id, lr.run_id) AS chosen_run_id,
     CASE WHEN d.last_success_run_id IS NOT NULL THEN TRUE ELSE FALSE END AS run_succ
-  FROM `amy_xlml_poc_prod.dag_duration_stat` d
+  FROM `amy_xlml_poc_prod.dag_duration_stat_iq` d
   LEFT JOIN (
     SELECT
       dr.dag_id,
@@ -47,14 +47,30 @@ task_offsets AS (
     ON ti.dag_id = dr.dag_id
    AND ti.run_id = dr.run_id
 ),
-
+task_offsets_fail AS (
+  SELECT
+    ti.dag_id,
+    ti.run_id,
+    SPLIT(ti.task_id, '.')[OFFSET(0)] AS test_id,
+    TIMESTAMP_DIFF(ti.start_date, dr.start_date, SECOND) AS start_offset_seconds
+  FROM `amy_xlml_poc_prod.task_fail` ti
+  JOIN `amy_xlml_poc_prod.dag_run` dr
+    ON ti.dag_id = dr.dag_id
+   AND ti.run_id = dr.run_id
+),
+task_offsets_union AS (
+  SELECT dag_id, run_id, test_id, start_offset_seconds FROM task_offsets
+  UNION ALL
+  SELECT dag_id, run_id, test_id, start_offset_seconds FROM task_offsets_fail
+),
 chosen_offsets AS (
   SELECT
     lr.dag_id,
     t.test_id,
     MIN(t.start_offset_seconds) AS start_offset_seconds
   FROM last_runs lr
-  JOIN task_offsets t
+  --JOIN task_offsets t
+  JOIN task_offsets_union t
     ON lr.dag_id = t.dag_id
    AND lr.chosen_run_id = t.run_id
   GROUP BY lr.dag_id, t.test_id
@@ -62,8 +78,8 @@ chosen_offsets AS (
 
 -- Full test universe for qualifying DAGs (ensures tests appear even if offset missing in chosen run)
 tests_in_scope AS (
-  SELECT DISTINCT dag_id, test_id
-  FROM `amy_xlml_poc_prod.dag_test_duration_stat`
+  SELECT DISTINCT dag_id, test_id, is_quarantined_dag, is_quarantined_test
+  FROM `amy_xlml_poc_prod.dag_test_duration_stat_iq`
   WHERE dag_id IN (SELECT dag_id FROM qualifying_dags)
 ),
 
@@ -72,6 +88,7 @@ forecast AS (
   SELECT
     u.dag_id,
     u.test_id,
+    u.is_quarantined_dag, u.is_quarantined_test,
     co.start_offset_seconds,
     ts.avg_duration_success_seconds AS avg_successful_test_duration_seconds,
     ts.avg_duration_any_seconds AS avg_any_test_duration_seconds,
@@ -86,7 +103,7 @@ forecast AS (
   LEFT JOIN chosen_offsets co
     ON u.dag_id = co.dag_id
    AND u.test_id = co.test_id
-  LEFT JOIN `amy_xlml_poc_prod.dag_test_duration_stat` ts
+  LEFT JOIN `amy_xlml_poc_prod.dag_test_duration_stat_iq` ts
     ON u.dag_id = ts.dag_id
    AND u.test_id = ts.test_id
 )
@@ -97,6 +114,7 @@ SELECT
   f.dag_id,
   lr.chosen_run_id AS run_id,
   f.test_id,
+  f.is_quarantined_dag, f.is_quarantined_test,
   dti.cluster_name,  
   dti.project_name AS cluster_project,  
   dti.region,
