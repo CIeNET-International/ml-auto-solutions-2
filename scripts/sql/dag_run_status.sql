@@ -1,6 +1,5 @@
 CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_prod.dag_run_status` AS
 
-
 SELECT
   dag_id,
   dag_owner,
@@ -9,6 +8,7 @@ SELECT
   accelerator,
   is_paused,
   formatted_schedule,
+  description,
   total_tests_all,
   is_quarantined,    
   date,
@@ -21,4 +21,3 @@ FROM
   `cienet-cmcs.amy_xlml_poc_prod.dag_run_status_base`
 WHERE is_quarantined_dag = FALSE
 
-  

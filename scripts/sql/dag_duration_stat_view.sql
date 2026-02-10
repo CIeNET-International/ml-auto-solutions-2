@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_duration_stat` AS
+CREATE OR REPLACE VIEW `amy_xlml_poc_prod.dag_duration_stat_view` AS
 
 SELECT
   dag_id,

@@ -8,6 +8,7 @@ SELECT
   accelerator,
   is_paused,
   formatted_schedule,
+  description,
   total_tests_all,
   is_quarantined,
   date,

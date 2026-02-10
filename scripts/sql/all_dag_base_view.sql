@@ -1,15 +1,15 @@
 
-CREATE OR REPLACE VIEW `amy_xlml_poc_prod.all_dag_base_view` AS
+CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_prod.all_dag_base_view` AS
 WITH 
 
 all_dags AS (
   SELECT d.*
-  FROM `amy_xlml_poc_prod.dag` d
-  WHERE last_parsed_time >= TIMESTAMP(CURRENT_DATE('UTC')) AND
-    dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
+  FROM `cienet-cmcs.amy_xlml_poc_prod.dag` d
+  WHERE last_parsed_time >= TIMESTAMP(DATE_SUB(CURRENT_DATE('UTC'), INTERVAL 1 DAY)) AND is_active=TRUE AND
+    dag_id NOT IN (SELECT dag_id from `cienet-cmcs.amy_xlml_poc_prod.config_ignore_dags`)
 --  WHERE dag_id IN
---  (SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.serialized_dag`)
---  AND dag_id NOT IN (SELECT dag_id from `amy_xlml_poc_prod.config_ignore_dags`)
+--  (SELECT dag_id FROM `cienet-cmcs.cienet-cmcs.amy_xlml_poc_prod.serialized_dag`)
+--  AND dag_id NOT IN (SELECT dag_id from `cienet-cmcs.amy_xlml_poc_prod.config_ignore_dags`)
 ),
 
 dag_sch AS (
@@ -32,7 +32,7 @@ dag_sch AS (
         schedule_interval
     END AS formatted_schedule
   FROM
-    `amy_xlml_poc_prod.dag` 
+    `cienet-cmcs.amy_xlml_poc_prod.dag` 
   WHERE dag_id in (SELECT DISTINCT dag_id FROM all_dags)  
 ),
 
@@ -45,7 +45,7 @@ dag_cleaned_owners AS (
     SELECT
       dag_id,
       part
-    FROM `amy_xlml_poc_prod.dag`,
+    FROM `cienet-cmcs.amy_xlml_poc_prod.dag`,
     UNNEST(SPLIT(owners, ',')) AS part
     WHERE LOWER(TRIM(part)) != 'airflow'
   )
@@ -55,7 +55,7 @@ dag_cleaned_owners AS (
 -- DAGs with the specified tag
 dag_with_tag AS (
   SELECT dt.dag_id,ARRAY_AGG(name) as tags
-  FROM `amy_xlml_poc_prod.dag_tag` dt
+  FROM `cienet-cmcs.amy_xlml_poc_prod.dag_tag` dt
   GROUP BY dag_id  
 ),
 
@@ -69,7 +69,7 @@ category_matches AS (
   FROM
     dag_with_tag d
   CROSS JOIN
-    `amy_xlml_poc_prod.config_category` c,
+    `cienet-cmcs.amy_xlml_poc_prod.config_category` c,
     UNNEST(d.tags) AS tag1,
     UNNEST(c.tag_names) AS tag2
   WHERE
@@ -86,7 +86,7 @@ accel_matches AS (
   FROM
     dag_with_tag d
   CROSS JOIN
-    `amy_xlml_poc_prod.config_accelerator` c,
+    `cienet-cmcs.amy_xlml_poc_prod.config_accelerator` c,
     UNNEST(d.tags) AS tag1,
     UNNEST(c.tag_names) AS tag2
   WHERE
@@ -98,8 +98,8 @@ accelerator_categorization AS (
       ta.dag_id,
       accelerator_family AS accelerator
     FROM
-      `amy_xlml_poc_prod.tests_accelerator_view` ta
-    LEFT JOIN `amy_xlml_poc_prod.quarantine_view` q ON ta.dag_id=q.dag_id and ta.test_id=q.test_id
+      `cienet-cmcs.amy_xlml_poc_prod.tests_accelerator_view` ta
+    LEFT JOIN `cienet-cmcs.amy_xlml_poc_prod.quarantine_view` q ON ta.dag_id=q.dag_id and ta.test_id=q.test_id
     WHERE
       accelerator_family IS NOT NULL AND (q.is_quarantine IS NULL OR q.is_quarantine = FALSE)
     UNION DISTINCT

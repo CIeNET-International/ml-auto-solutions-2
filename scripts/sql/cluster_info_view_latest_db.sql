@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW `amy_xlml_poc_prod.cluster_info_view_latest_db` AS
+CREATE OR REPLACE VIEW `cienet-cmcs.amy_xlml_poc_prod.cluster_info_view_latest_db` AS
 WITH
 latest_dag_run_1 AS (
   SELECT
@@ -33,7 +33,7 @@ cluster_name_cte AS (
     op.task_id,
     REGEXP_EXTRACT(op.op_arg_item, r"cluster_name='([^']*)'") AS cluster_name
   FROM
-    `amy_xlml_poc_prod.op_args_unnested_view` AS op
+    `cienet-cmcs.amy_xlml_poc_prod.op_args_unnested_view` AS op
   INNER JOIN latest_dag_run_cte AS ldr
     ON op.dag_id = ldr.dag_id AND op.run_id = ldr.run_id
   WHERE
@@ -47,7 +47,7 @@ region_cte_1 AS (
     op.task_id,
     REGEXP_EXTRACT(op.op_arg_item, r"zone='([a-zA-Z]+-[a-zA-Z0-9]+)") AS region
   FROM
-    `amy_xlml_poc_prod.op_args_unnested_view` AS op
+    `cienet-cmcs.amy_xlml_poc_prod.op_args_unnested_view` AS op
   INNER JOIN latest_dag_run_cte AS ldr
     ON op.dag_id = ldr.dag_id AND op.run_id = ldr.run_id
   WHERE
@@ -61,7 +61,7 @@ region_cte_2 AS (
     op.task_id,
     REGEXP_EXTRACT(op.op_arg_item, r"region='([a-zA-Z]+-[a-zA-Z0-9]+)") AS region
   FROM
-    `amy_xlml_poc_prod.op_args_unnested_view` AS op
+    `cienet-cmcs.amy_xlml_poc_prod.op_args_unnested_view` AS op
   INNER JOIN latest_dag_run_cte AS ldr
     ON op.dag_id = ldr.dag_id AND op.run_id = ldr.run_id
   WHERE
@@ -80,7 +80,7 @@ project_name_cte_1 AS (
     op.task_id,
     REGEXP_EXTRACT(op_arg_item, r"GCPConfig\(project_name='([^']*)'") AS project_name
   FROM
-    `amy_xlml_poc_prod.op_args_unnested_view` AS op
+    `cienet-cmcs.amy_xlml_poc_prod.op_args_unnested_view` AS op
   INNER JOIN latest_dag_run_cte AS ldr
     ON op.dag_id = ldr.dag_id AND op.run_id = ldr.run_id
   WHERE
@@ -94,7 +94,7 @@ project_name_cte_2 AS (
     op.task_id,
     REGEXP_EXTRACT(op_arg_item, r"project_id='([^']*)'") AS project_name
   FROM
-    `amy_xlml_poc_prod.op_args_unnested_view` AS op
+    `cienet-cmcs.amy_xlml_poc_prod.op_args_unnested_view` AS op
   INNER JOIN latest_dag_run_cte AS ldr
     ON op.dag_id = ldr.dag_id AND op.run_id = ldr.run_id
   WHERE
@@ -139,10 +139,10 @@ SELECT
   i.accelerator_type,
   i.accelerator_family
 FROM aggr a
-LEFT JOIN `amy_xlml_poc_prod.dag_test_info` i 
+LEFT JOIN `cienet-cmcs.amy_xlml_poc_prod.dag_test_info` i 
   ON a.dag_id = i.dag_id  AND a.test_id = i.test_id
 LEFT JOIN latest_dag_run_cte c ON a.dag_id = c.dag_id AND a.run_id=c.run_id
-
+WHERE a.dag_id NOT IN (SELECT dag_id FROM `cienet-cmcs.amy_xlml_poc_prod.base` WHERE category='TPU-Obs')
 
 
 

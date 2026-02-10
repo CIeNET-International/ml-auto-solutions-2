@@ -18,6 +18,12 @@ filtered_runs AS (
   UNION ALL
   SELECT * FROM filtered_runs_qr
 ),
+all_dags AS (
+  SELECT *,
+    CASE WHEN total_tests > 0 AND total_tests != total_tests_qe THEN TRUE ELSE FALSE END AS is_quarantined,
+    CASE WHEN total_tests > 0 AND total_tests = total_tests_q THEN TRUE ELSE FALSE END AS is_quarantined_dag
+  FROM `amy_xlml_poc_prod.base`
+),
 
 filtered_tests AS (
   SELECT w.dag_id, w.test_id, w.test_is_passed, w.test_start_date, w.test_end_date, w.test_accelerator, w.type,
@@ -154,17 +160,35 @@ grouping_cluster_tests AS (
     ) AS clusters,
   FROM grouping_tests AS t
   GROUP BY 1
+),
+dags_with_clusters AS (
+  SELECT
+    t.dag_id, t.category, t.accelerator, t.tags, t.dag_owners, t.formatted_schedule, t.is_paused, t.is_quarantined_dag, t.clusters,
+    s.run_id, s.execution_date, s.is_passed, s.is_partial_passed, 
+    s.total_tests_eq + s.total_tests_q AS total_run_tests, s.total_tests_eq, s.total_tests_q, s.total_passed_eq, s.total_passed_q,
+    ca.last_run_clusters
+  FROM
+    grouping_cluster_tests AS t
+  LEFT JOIN
+    last_run_dag_summary AS s ON t.dag_id = s.dag_id
+  LEFT JOIN
+    last_run_cluster_agg AS ca ON t.dag_id = ca.dag_id  
+),
+dags_wo_clusters AS (
+  SELECT
+    t.dag_id, t.category, t.accelerator, t.tags, t.dag_owners, t.formatted_schedule, t.is_paused, t.is_quarantined_dag, 
+    (SELECT clusters FROM grouping_cluster_tests LIMIT 0) AS clusters,
+    s.run_id, s.execution_date, s.is_passed, s.is_partial_passed, 
+    s.total_tests_eq + s.total_tests_q AS total_run_tests, s.total_tests_eq, s.total_tests_q, s.total_passed_eq, s.total_passed_q,
+    (SELECT last_run_clusters FROM last_run_cluster_agg LIMIT 0) AS last_run_clusters
+  FROM all_dags t
+  LEFT JOIN
+    last_run_dag_summary AS s ON t.dag_id = s.dag_id
+  WHERE t.dag_id NOT IN (SELECT dag_id FROM dags_with_clusters)  
+
 )
 
-SELECT
-  t.dag_id, t.category, t.accelerator, t.tags, t.dag_owners, t.formatted_schedule, t.is_paused, t.is_quarantined_dag, t.clusters,
-  s.run_id, s.execution_date, s.is_passed, s.is_partial_passed, 
-  s.total_tests_eq + s.total_tests_q AS total_run_tests, s.total_tests_eq, s.total_tests_q, s.total_passed_eq, s.total_passed_q,
-  ca.last_run_clusters,  
-FROM
-  grouping_cluster_tests AS t
-LEFT JOIN
-  last_run_dag_summary AS s ON t.dag_id = s.dag_id
-LEFT JOIN
-  last_run_cluster_agg AS ca ON t.dag_id = ca.dag_id  
+SELECT * FROM dags_with_clusters 
+UNION ALL
+SELECT * FROM dags_wo_clusters
 

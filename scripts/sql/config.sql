@@ -100,7 +100,9 @@ INSERT INTO `cienet-cmcs.amy_xlml_poc_prod.config_category` (name, tag_names, pr
 ('MaxText',['maxtext'],10),
 ('TPU-Obs',['tpu-observability'],1),
 ('Orbax',['orbax'],1),
-('Pathways',['pathways'],1);
+('Pathways',['pathways'],1),
+('AxLearn',['axlearn'],1),
+('Post-Training',['post-training'],1);
 
 
 
@@ -144,7 +146,7 @@ insert into `cienet-cmcs.amy_xlml_poc_prod.config_ignore_skipped_dags` (dag_id) 
 
 ---------------------------------------
 CREATE TABLE `cienet-cmcs.amy_xlml_poc_prod.config_error` (
-    err_code STRING,
+    err_code INTEGER,
     err_regx STRING,
     err_category STRING,
     err_type STRING,
@@ -153,33 +155,39 @@ CREATE TABLE `cienet-cmcs.amy_xlml_poc_prod.config_error` (
     
 );
 
-insert into `cienet-cmcs.amy_xlml_poc_prod.config_error` (err_regx, err_code, err_category, err_type) values 
-("airflow.exceptions.AirflowFailException: Bad pod phase: Failed",1010,"Airflow","airflow.exception"),
-("airflow.exceptions.AirflowSensorTimeout: Sensor has timed out; run duration of .* seconds exceeds the specified timeout of .*",1020,"Airflow","airflow.exception"),
-("AssertionError: Mantaray command failed with code 1",2110,"DAG","AssertionError"),
-,,2111,,AssertionError (1),ModuleNotFoundError: No module named 'mantaray'
-("AssertionError: XPK clean-up failed with code 1,,2120,DAG (2),AssertionError (1),
-("AssertionError: XPK command failed with code 1,,2130,DAG (2),AssertionError (1),\[XPK\] b'ERROR: \(gcloud\.container\.images\.describe\) \[.*?\] is not found or is not a valid name\.
-,,2131,,AssertionError (1),"\[XPK\] b'error: the server doesn't have a resource type ""workloads"""
-,,2132,,AssertionError (1),"\[XPK\] b'Error: unknown command "".*?"" for ""kubectl"""
-("AssertionError: XPK command failed with code 2,,2140,DAG (2),,
-("AttributeError: Unknown field for Operation: exception,,2210,DAG (2),AttributeError (2),
-f("abric.exceptions.GroupException: {<Connection host=[\d\.]+>: <UnexpectedExit: cmd='.*?' exited=\d+>},,2310,DAG (2),fabric.exception (3),
-("fabric.exceptions.GroupException: {<Connection host=[\d\.]+ user=cloud-ml-auto-solutions>: TimeoutError\(110, 'Connection timed out'\)}",,2320,DAG (2),fabric.exception (3),
-("fabric\.exceptions\.GroupException: {<Connection host=[\d\.]+ user=cloud-ml-auto-solutions>: AuthenticationException\('Authentication failed\.'\)},,2330,DAG (2),fabric.exception (3),
-("IndexError: list index out of range,,2410,DAG (2),Index Error (4),"Error: INSTALLATION FAILED: path "".*?"" not found"
-,,2411,,Index Error (4),ImportError: .*?\.so: undefined symbol: \w+
-("RuntimeError: Bad queued resource state FAILED,,2510,DAG (2),Runtime Error (5),
-("RuntimeError: Event count mismatch.,,2520,DAG (2),Runtime Error (5),
-("RuntimeError: Non-zero exit code,,2530,,Runtime Error (5),fatal: destination path '.*?' already exists and is not an empty directory\.
-,,2531,,Runtime Error (5),ImportError: .*?\.so: undefined symbol: \w+
-("subprocess.CalledProcessError: Command 'gcloud container node-pools (create|delete) .*' returned non-zero exit status 1.,,2610,DAG (2),CallProcessError (6),
-("tensorflow.python.framework.errors_impl.NotFoundError: \{\{.*?\}\} /tmp/tmp\w+/tflog/metrics; No such file or directory [Op:IteratorGetNext] name:,,2710,DAG (2),tensorflow (7),
-("TypeError: a bytes-like object is required, not 'str'",,2810,DAG (2),TypeError (8),
-("TypeError: Object of type \w+ is not JSON serializable,,2820,DAG (2),TypeError (8),
-("google.api_core.exceptions.NotFound: 404 GET https:\/\/storage\.googleapis\.com\/download\/storage\/v1\/b\/ml-auto-solutions\/o\/.*?: No such object: .*?,,9010,ENV (9),google.api_core.exception (0),
-("google.api_core.exceptions.PermissionDenied: 403.*,,9020,ENV (9),google.api_core.exception (0),
-("google.api_core.exceptions.ResourceExhausted: 429 Quota limit 'QueuedResourcePerProjectPerZone' has been exceeded.*,,9030,ENV (9),google.api_core.exception (0),
+INSERT INTO `amy_xlml_poc_prod.config_error` (err_regx, err_code)
+VALUES
+  (r'airflow\.exceptions\.AirflowFailException: Bad pod phase: Failed', 1010),
+  (r'airflow\.exceptions\.AirflowSensorTimeout: Sensor has timed out; run duration of [\d\.]+ seconds exceeds the specified timeout of [\d\.]+', 1020),
+  (r'AssertionError: Mantaray command failed with code 1', 2110),
+  (r'Error response from daemon: Head "https?://.*?" denied: Permission ".*?" denied on resource ".*?" \(or it may not exist\)', 2111),
+  (r'ModuleNotFoundError: No module named \'mantaray\'', 2112),
+  (r'AssertionError: XPK clean-up failed with code 1', 2120),
+  (r'AssertionError: XPK command failed with code 1', 2130),
+  (r'\[XPK\] b\'ERROR: \(gcloud\.container\.images\.describe\) \[.*?\] is not found or is not a valid name\.', 2131),
+  (r'\[XPK\] b\'error: the server doesn\'t have a resource type "workloads"\'' , 2132),
+  (r'\[XPK\] b\'Error: unknown command ".*?" for "kubectl"\'' , 2133),
+  (r'AssertionError: XPK command failed with code 2', 2140),
+  (r'AttributeError: Unknown field for Operation: exception', 2210),
+  (r'"ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"', 2211),
+  (r'fabric\.exceptions\.GroupException: \{<Connection host=[\d\.]+>: <UnexpectedExit: cmd=\'.*?\' exited=\d+>\}', 2310),
+  (r'fabric\.exceptions\.GroupException: \{<Connection host=[\d\.]+ user=cloud-ml-auto-solutions>: TimeoutError\(110, \'Connection timed out\'\)\}', 2320),
+  (r'fabric\.exceptions\.GroupException: \{<Connection host=[\d\.]+ user=cloud-ml-auto-solutions>: AuthenticationException\(\'Authentication failed\.\'\)\}', 2330),
+  (r'IndexError: list index out of range', 2410),
+  (r'Error: INSTALLATION FAILED: path ".*?" not found', 2411),
+  (r'ImportError: .*?\.so: undefined symbol: \w+', 2412),
+  (r'RuntimeError: Bad queued resource state FAILED', 2510),
+  (r'RuntimeError: Event count mismatch\.', 2520),
+  (r'RuntimeError: Non-zero exit code', 2530),
+  (r'fatal: destination path \'.*?\' already exists and is not an empty directory\.', 2531),
+  (r'ImportError: .*?\.so: undefined symbol: \w+', 2532),
+  (r'subprocess\.CalledProcessError: Command \'gcloud container node-pools (create|delete) .*\' returned non-zero exit status 1\.', 2610),
+  (r'tensorflow\.python\.framework\.errors_impl\.NotFoundError: \{\{.*?\}\} /tmp/tmp\w+/tflog/metrics; No such file or directory \[Op:IteratorGetNext\] name:', 2710),
+  (r'TypeError: a bytes-like object is required, not \'str\'', 2810),
+  (r'TypeError: Object of type \w+ is not JSON serializable', 2820),
+  (r'google\.api_core\.exceptions\.NotFound: 404 GET https:\/\/storage\.googleapis\.com\/download\/storage\/v1\/b\/ml-auto-solutions\/o\/.*?: No such object: .*?', 9010),
+  (r'google\.api_core\.exceptions\.PermissionDenied: 403.*', 9020),
+  (r'google\.api_core\.exceptions\.ResourceExhausted: 429 Quota limit \'QueuedResourcePerProjectPerZone\' has been exceeded.*', 9030);
 
 
 

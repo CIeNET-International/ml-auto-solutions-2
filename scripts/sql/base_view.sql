@@ -24,10 +24,10 @@ dag_scheduled AS (
 
 dag_runs_ended AS (
   SELECT a.* from dag_runs_ended_all a
-  LEFT JOIN dag_scheduled s ON a.dag_id = s.dag_id
+  --LEFT JOIN dag_scheduled s ON a.dag_id = s.dag_id
    WHERE LOWER(run_type) = 'scheduled'
      --a.run_id like 'scheduled%'
-     OR s.dag_id is NULL
+     --OR s.dag_id is NULL
 ),
 
 -- all tasks status
@@ -265,6 +265,7 @@ dag_run_base AS (
   SELECT 
     t1.dag_id, 
     t1.run_id, 
+    t1.run_type,
     t1.execution_date, 
     t1.start_date, 
     t1.end_date, 
@@ -299,8 +300,18 @@ dag_run_base_all AS (
     t1.failed_tests,
     t1.total_tasks,
     t1.successful_tasks,
-    CASE WHEN total_tests = successful_tests THEN 1 ELSE 0 END AS is_passed,
-    CASE WHEN successful_tests > 0 AND successful_tests < total_tests THEN 1 ELSE 0 END AS is_partial_passed,
+    CASE
+      WHEN t1.total_tests > 0 AND t1.total_tests = t1.successful_tests THEN 1
+      WHEN t1.total_tests = 0 AND t1.total_tests_q > 0 AND t1.total_tests_q = t1.successful_tests_q THEN 1
+      ELSE 0
+    END AS is_passed,    
+    CASE
+      WHEN t1.total_tests > 0 AND t1.successful_tests > 0 AND t1.successful_tests < t1.total_tests THEN 1
+      WHEN t1.total_tests = 0 AND t1.total_tests_q > 0 AND t1.successful_tests_q > 0 AND t1.successful_tests_q < t1.total_tests_q THEN 1
+      ELSE 0
+    END AS is_partial_passed,    
+    --CASE WHEN total_tests = successful_tests THEN 1 ELSE 0 END AS is_passed,
+    --CASE WHEN successful_tests > 0 AND successful_tests < total_tests THEN 1 ELSE 0 END AS is_partial_passed,
     t1.total_tests_q,
     t1.successful_tests_q,
     t1.failed_tests_q,
@@ -461,6 +472,7 @@ all_run_details AS (
     ARRAY_AGG(
       STRUCT(
         drb.run_id,
+        drb.run_type,
         drb.execution_date,
         drb.start_date,
         drb.end_date,
@@ -500,6 +512,7 @@ all_run_details_qr AS (
     ARRAY_AGG(
       STRUCT(
         drb.run_id,
+        drb.run_type,
         drb.execution_date,
         drb.start_date,
         drb.end_date,
