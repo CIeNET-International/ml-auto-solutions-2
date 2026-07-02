@@ -10,7 +10,7 @@ with DAG(
     #schedule_interval=None,  
     #schedule="@hourly",
     #schedule="0 */4 * * *",
-    schedule="25 0 * * *",
+    schedule="35 0 * * *",
     catchup=False,
     tags=["dashboard"],
     default_args={"retries": 0},
