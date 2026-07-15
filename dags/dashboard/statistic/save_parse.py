@@ -345,7 +345,7 @@ def save():
         merged_tasks = merge_tasks(tasks)
         for test_id, info in merged_tasks.items():
             accelerator_type = info.get("accelerator_type")
-            acceleratoe_family = None
+            accelerator_family = None
             if accelerator_type:
                 accelerator_family = categorize_op_kwargs(accelerator_type)
             row = {
